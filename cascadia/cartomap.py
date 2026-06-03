@@ -35,7 +35,14 @@ HAZARD_CMAPS = {
     "p_wildfire": "YlOrRd",
     "p_earthquake": "Purples",
     "p_heat": "hot_r",
+    # sub-seasonal (weeks 2-6) outlook layers
+    "fire_outlook": "YlOrRd", "heat_outlook": "hot_r", "drought_outlook": "YlOrBr",
 }
+HAZARD_TITLES.update({
+    "fire_outlook": "Fire potential outlook (wk 2-6)",
+    "heat_outlook": "Heat outlook (wk 2-6)",
+    "drought_outlook": "Drought / dryness outlook (wk 2-6)",
+})
 
 
 def _grid(risk: pd.DataFrame, col: str):
@@ -81,9 +88,13 @@ def _panel(fig, ax, lons, lats, Z, col):
 
 def static_risk_map(risk: pd.DataFrame, region_name: str,
                     out_path: str | Path = "cascadia_risk_map.png",
-                    panels: bool = True, as_of: str = "live") -> Path:
+                    panels: bool = True, as_of: str = "live",
+                    cols: list[str] | None = None, suptitle: str | None = None) -> Path:
     """Render the risk surface; each panel gets its own themed, auto-scaled
-    colormap and colorbar so every hazard's spatial structure is legible."""
+    colormap and colorbar so every hazard's spatial structure is legible.
+
+    Pass `cols` to render an arbitrary set of layers (e.g. sub-seasonal outlooks).
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -93,10 +104,11 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
         central_longitude=float(np.nanmean(risk["lon"])),
         central_latitude=float(np.nanmean(risk["lat"])))
 
-    cols = ["compound_risk"]
-    if panels:
-        cols += [c for c in ["p_flood", "p_landslide", "p_wildfire",
-                             "p_earthquake", "p_heat"] if c in risk.columns]
+    if cols is None:
+        cols = ["compound_risk"]
+        if panels:
+            cols += [c for c in ["p_flood", "p_landslide", "p_wildfire",
+                                 "p_earthquake", "p_heat"] if c in risk.columns]
 
     ncol = 3 if len(cols) > 1 else 1
     nrow = int(np.ceil(len(cols) / ncol))
@@ -111,7 +123,7 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
     for ax in axes[len(cols):]:
         ax.axis("off")
 
-    fig.suptitle(f"Cascadia — compound & cascading hazard risk\n{region_name}  ·  {as_of}",
+    fig.suptitle(suptitle or f"Cascadia — compound & cascading hazard risk\n{region_name}  ·  {as_of}",
                  fontsize=15, weight="bold")
     out_path = Path(out_path)
     fig.savefig(out_path, dpi=140, bbox_inches="tight")

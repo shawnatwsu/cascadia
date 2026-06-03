@@ -68,12 +68,19 @@ run only), runs the engine on live open feeds, and **opens the risk map in your
 browser**. Other one-word commands:
 
 ```powershell
-.\run.ps1 train      # train the flood ML model + print the scorecard
-.\run.ps1 validate   # replay real disasters, print pass/fail
-.\run.ps1 serve      # launch the interactive dashboard (opens browser)
-.\run.ps1 all        # train (if needed) + map, in one go
+.\run.ps1 train       # train the flood ML model + print the scorecard
+.\run.ps1 validate    # replay real disasters, print pass/fail
+.\run.ps1 serve       # launch the interactive dashboard (opens browser)
+.\run.ps1 conditions pnw     # 4km GRIDMET hazard nowcast over a big region
+.\run.ps1 conditions conus   # ...or the whole US (national map)
+.\run.ps1 subseasonal pnw    # weeks 2-6 fire/drought/heat outlook
 .\run.ps1 parcel "1300 Franklin St, Vancouver, WA"   # address-level risk
 ```
+
+One entry point (`run.py` / `run.ps1` / `run.bat`) drives every mode — the live
+forecast map, the GRIDMET 4 km regional/national nowcast, the sub-seasonal
+outlook, training, validation, the dashboard, and address queries — each
+producing the same projected, per-hazard-colorbar cartographic output.
 
 ### Hazard methods (all data-driven / open data)
 

@@ -117,6 +117,19 @@ def cmd_conditions(args: list[str]) -> None:
     _open(Path(out).resolve().as_uri())
 
 
+def cmd_subseasonal(args: list[str]) -> None:
+    from cascadia.subseasonal import subseasonal_outlook
+    from cascadia.conditions import REGIONS
+    region = (args[0].lower() if args else "pnw")
+    if region not in REGIONS:
+        print(f"Unknown region '{region}'. Choices: {', '.join(REGIONS)}")
+        return
+    print(f"Building weeks 2-6 sub-seasonal outlook for {region.upper()}…\n")
+    _, out = subseasonal_outlook(region)
+    print("  Opening map…")
+    _open(Path(out).resolve().as_uri())
+
+
 COMMANDS = {
     "map": cmd_map, "": cmd_map,
     "train": cmd_train,
@@ -125,6 +138,7 @@ COMMANDS = {
     "all": cmd_all,
     "parcel": cmd_parcel,
     "conditions": cmd_conditions,
+    "subseasonal": cmd_subseasonal,
 }
 
 
