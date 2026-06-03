@@ -1,0 +1,15 @@
+# Cascadia — compound & cascading hazard engine
+# Lean, laptop-friendly core (no GPU, no heavy geo stack required for MVP)
+requests>=2.31
+pandas>=2.1
+numpy>=1.26
+networkx>=3.2
+scikit-learn>=1.4
+shapely>=2.0
+pyyaml>=6.0
+matplotlib>=3.8
+folium>=0.16
+python-dateutil>=2.9
+global-land-mask>=1.0
+fastapi>=0.110
+uvicorn[standard]>=0.29

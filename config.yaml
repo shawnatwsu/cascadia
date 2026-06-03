@@ -1,0 +1,45 @@
+# Cascadia configuration
+# Region of interest: Cascadia (Pacific Northwest) — default clip to SW Washington
+# around Clark County, extendable to the full Cascadia subduction margin.
+
+region:
+  name: "Cascadia (SW Washington core)"
+  # bbox: [min_lon, min_lat, max_lon, max_lat]
+  bbox: [-124.8, 45.0, -120.5, 47.5]
+  state: "WA"          # used by NWS alert area filter
+  grid_resolution_deg: 0.05  # ~5.5 km cells. NOTE: ~0.1 deg is the native
+  # resolution of the free met data — finer than the source resolution is
+  # smoother to look at but partly interpolation, not new information. Genuine
+  # sub-km hazard detail needs higher-res inputs (Sentinel-1, a DEM for slope).
+
+horizon_days: 7        # cascade prediction horizon
+
+sources:
+  usgs_quakes:
+    # No API key. Rolling feeds: all_day / all_week / all_month
+    feed: "all_week"
+    min_magnitude: 2.5
+  nws_alerts:
+    # No API key (requires a descriptive User-Agent header)
+    user_agent: "Cascadia-hazard-engine (research; contact: boredbunniesyc@gmail.com)"
+  open_meteo:
+    # No API key. Precip + soil moisture forecast.
+    hourly: ["precipitation", "temperature_2m", "relative_humidity_2m", "wind_speed_10m", "soil_moisture_0_to_1cm", "soil_moisture_27_to_81cm"]
+    forecast_days: 7
+    sample_step: 0.25   # deg between forecast sample points (smaller = more
+                        # real spatial gradient, but more API calls)
+  usgs_water:
+    # No API key. Instantaneous streamflow (discharge, gage height).
+    period: "P7D"
+    parameters: ["00060", "00065"]   # discharge cfs, gage height ft
+  seismicity:
+    # No API key. Long-term catalog for the smoothed-seismicity hazard prior.
+    catalog_start: "1970-01-01"
+    catalog_min_magnitude: 4.0
+  firms:
+    # NASA FIRMS active fire. Needs a free MAP_KEY (env: FIRMS_MAP_KEY).
+    map_key_env: "FIRMS_MAP_KEY"
+    source: "VIIRS_SNPP_NRT"
+    day_range: 3
+
+cache_dir: "data/cache"

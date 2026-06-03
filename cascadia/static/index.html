@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cascadia — compound & cascading hazard risk</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    #map { height: 100vh; }
+    .panel {
+      position: absolute; top: 12px; left: 12px; z-index: 1000;
+      background: #fff; padding: 12px 14px; border-radius: 8px;
+      box-shadow: 0 2px 10px #0003; max-width: 320px;
+    }
+    .panel h1 { font-size: 16px; margin: 0 0 4px; }
+    .panel p { font-size: 12px; color: #444; margin: 4px 0; }
+    .legend { position: absolute; bottom: 18px; right: 12px; z-index: 1000;
+      background:#fff; padding:8px 10px; border-radius:8px; box-shadow:0 2px 10px #0003;
+      font-size:12px; }
+    .bar { height:10px; width:140px; background:linear-gradient(90deg,#2ecc40,#ffdc00,#ff4136);
+      border-radius:3px; margin:4px 0; }
+    .row { display:flex; justify-content:space-between; }
+    #status { font-size:11px; color:#888; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="panel">
+    <h1>Cascadia</h1>
+    <p><b>Compound &amp; cascading hazard risk.</b> Color = probability that
+       <i>any</i> hazard occurs over the horizon. Click a cell for the cascade.</p>
+    <p id="status">loading live risk surface…</p>
+  </div>
+  <div class="legend">
+    <div>compound risk</div>
+    <div class="bar"></div>
+    <div class="row"><span>0.0</span><span>0.5</span><span>1.0</span></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([46.3, -122.6], 7);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+      { attribution: '© OpenStreetMap, © CARTO', maxZoom: 12 }).addTo(map);
+
+    const RES = 0.1, H = RES / 2;
+    function color(r) {
+      const red = Math.round(255 * Math.min(1, r * 2));
+      const grn = Math.round(255 * Math.min(1, (1 - r) * 2));
+      return `rgb(${red},${grn},48)`;
+    }
+
+    fetch('/risk').then(r => r.json()).then(data => {
+      document.getElementById('status').textContent =
+        `${data.region} — ${data.cells.length} cells, ${data.as_of}, ${data.horizon_days}d horizon`;
+      data.cells.forEach(c => {
+        L.rectangle(
+          [[c.lat - H, c.lon - H], [c.lat + H, c.lon + H]],
+          { weight: 0, fillColor: color(c.compound_risk),
+            fillOpacity: 0.35 + 0.45 * c.compound_risk }
+        ).addTo(map).bindPopup(
+          `<b>Compound risk: ${c.compound_risk.toFixed(2)}</b><br>` +
+          `P(flood)=${(c.p_flood||0).toFixed(2)} P(landslide)=${(c.p_landslide||0).toFixed(2)}<br>` +
+          `P(wildfire)=${(c.p_wildfire||0).toFixed(2)} P(quake)=${(c.p_earthquake||0).toFixed(2)}<br>` +
+          `<i>cascade: ${c.dominant_chain || '—'}</i><br>` +
+          `co-occurring: ${c.co_occurring || '—'}`
+        );
+      });
+    }).catch(e => {
+      document.getElementById('status').textContent = 'error loading /risk: ' + e;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Runtime data, caches, logs (regenerated; some large)
+data/
+*.log
+*_risk_map.html
+
+# Editor / OS
+.vscode/
+.ipynb_checkpoints/
+.DS_Store
+
+# NOTE: cascadia/static/index.html and cascadia/models_store/*.joblib ARE tracked
+# (the dashboard and the trained flood model ship with the repo).
