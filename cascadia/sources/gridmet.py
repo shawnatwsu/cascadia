@@ -35,6 +35,7 @@ VARS: dict[str, str] = {
     "fm100": "fm100",
     "fm1000": "fm1000",
     "sph": "sph",              # specific humidity (for wet-bulb)
+    "etr": "etr",              # reference ET (for an antecedent-wetness proxy)
 }
 KELVIN_VARS = {"tmax_c", "tmin_c"}
 

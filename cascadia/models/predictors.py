@@ -136,17 +136,19 @@ PREDICTORS: dict[str, Predictor] = {
 }
 
 
-def base_probabilities(features: pd.DataFrame) -> pd.DataFrame:
+def base_probabilities(features: pd.DataFrame, use_trained: bool = True) -> pd.DataFrame:
     """Return a (cell x hazard) table of base initiation probabilities.
 
-    For each hazard, a trained model in models_store/ (if present) overrides the
-    calibrated-sigmoid heuristic — otherwise the heuristic is used.
+    For each hazard, a trained model in models_store/ (if present and
+    use_trained) overrides the calibrated-sigmoid heuristic. Set use_trained
+    False when a required trained feature is unavailable (e.g. the GRIDMET
+    conditions map has no volumetric soil moisture for the trained flood model).
     """
     from .trained import load_trained
 
     out = pd.DataFrame({"cell_id": features["cell_id"].values})
     for hz, fn in PREDICTORS.items():
-        trained = load_trained(hz)
+        trained = load_trained(hz) if use_trained else None
         probs = trained.predict(features) if trained is not None else fn(features)
         out[hz] = np.clip(probs, 1e-4, 0.999)
     return out

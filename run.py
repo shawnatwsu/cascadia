@@ -105,6 +105,18 @@ def cmd_parcel(args: list[str]) -> None:
     print(json.dumps(assess_address(address), indent=2))
 
 
+def cmd_conditions(args: list[str]) -> None:
+    from cascadia.conditions import conditions_map, REGIONS
+    region = (args[0].lower() if args else "pnw")
+    if region not in REGIONS:
+        print(f"Unknown region '{region}'. Choices: {', '.join(REGIONS)}")
+        return
+    print(f"Building GRIDMET 4km hazard-conditions nowcast for {region.upper()}…\n")
+    _, out = conditions_map(region)
+    print("  Opening map…")
+    _open(Path(out).resolve().as_uri())
+
+
 COMMANDS = {
     "map": cmd_map, "": cmd_map,
     "train": cmd_train,
@@ -112,6 +124,7 @@ COMMANDS = {
     "serve": cmd_serve,
     "all": cmd_all,
     "parcel": cmd_parcel,
+    "conditions": cmd_conditions,
 }
 
 
