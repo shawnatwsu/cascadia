@@ -90,6 +90,13 @@ def subseasonal_outlook(region_key: str = "pnw", out_path: str | Path =
         cells, region.name, out_path,
         cols=["fire_outlook", "drought_outlook", "heat_outlook"],
         suptitle=("Cascadia — sub-seasonal hazard outlook (weeks 2-6)\n"
-                  f"{region.name}  ·  land-memory persistence baseline"))
+                  f"{region.name}  ·  land-memory persistence baseline"),
+        description=(
+            "Weeks 2-6 outlook tendency (0-1) for slow-memory hazards, from current "
+            "land-surface state: 1000-hr dead-fuel moisture, energy release "
+            "component, VPD and precipitation deficit, which persist for weeks. "
+            "This is a persistence baseline (not a dynamical S2S forecast); "
+            "fast, unpredictable variables (daily wind/precip) are excluded. "
+            "Colors are binned and scaled per panel — read each panel's colorbar."))
     log(f"Map written: {out}")
     return cells, out
