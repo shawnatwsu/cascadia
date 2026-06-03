@@ -129,6 +129,31 @@ def _nearest_join(cells: pd.DataFrame, pts: pd.DataFrame, col: str) -> pd.Series
     return pd.Series(vals, index=cells.index)
 
 
+def _smoothed_density(cell_lat, cell_lon, pt_lat, pt_lon, bandwidth_km):
+    """Gaussian-kernel density at each cell from point locations, using a
+    cKDTree fixed-radius query so it scales to CONUS (100k+ points, 100k+ cells).
+
+    Returns the summed kernel weight per cell (not yet normalized)."""
+    import numpy as np
+    from scipy.spatial import cKDTree
+    if len(pt_lat) == 0:
+        return np.zeros(len(cell_lat))
+    lat0 = float(np.mean(cell_lat))
+    kx = 111.0 * np.cos(np.radians(lat0))
+    pts = np.column_stack([np.asarray(pt_lon) * kx, np.asarray(pt_lat) * 111.0])
+    cel = np.column_stack([np.asarray(cell_lon) * kx, np.asarray(cell_lat) * 111.0])
+    tree = cKDTree(pts)
+    r = 3.5 * bandwidth_km  # Gaussian negligible beyond ~3.5 sigma
+    h2 = 2.0 * bandwidth_km * bandwidth_km
+    dens = np.zeros(len(cel))
+    neighbors = tree.query_ball_point(cel, r, workers=-1)
+    for i, idx in enumerate(neighbors):
+        if idx:
+            d2 = ((pts[idx] - cel[i]) ** 2).sum(axis=1)
+            dens[i] = np.exp(-d2 / h2).sum()
+    return dens
+
+
 def _seismic_base_prob(cells: pd.DataFrame, catalog: pd.DataFrame,
                        res_deg: float, horizon_days: int,
                        bandwidth_km: float = 30.0) -> pd.Series:
@@ -146,20 +171,14 @@ def _seismic_base_prob(cells: pd.DataFrame, catalog: pd.DataFrame,
 
     years = max(1.0, catalog.attrs.get("years", 50.0))
     h = bandwidth_km
-    elat = catalog["lat"].to_numpy(); elon = catalog["lon"].to_numpy()
-    rates = []
-    for la, lo in zip(cells["lat"], cells["lon"]):
-        # Approx local cell area (km^2) and distances (km).
-        coslat = np.cos(np.radians(la))
-        dy = (elat - la) * 111.0
-        dx = (elon - lo) * 111.0 * coslat
-        d2 = dx * dx + dy * dy
-        cell_area = (res_deg * 111.0) * (res_deg * 111.0 * coslat)
-        kernel = np.exp(-d2 / (2 * h * h)) * (cell_area / (2 * np.pi * h * h))
-        annual_rate = kernel.sum() / years
-        p = 1.0 - np.exp(-annual_rate * horizon_days / 365.25)
-        rates.append(p)
-    return pd.Series(np.clip(rates, 1e-4, 0.999), index=cells.index)
+    coslat = np.cos(np.radians(float(cells["lat"].mean())))
+    cell_area = (res_deg * 111.0) * (res_deg * 111.0 * coslat)
+    dens = _smoothed_density(cells["lat"].to_numpy(), cells["lon"].to_numpy(),
+                             catalog["lat"].to_numpy(), catalog["lon"].to_numpy(), h)
+    # density (kernel sum) -> expected events per cell -> annual rate -> Poisson P
+    annual_rate = dens * (cell_area / (2 * np.pi * h * h)) / years
+    p = 1.0 - np.exp(-annual_rate * horizon_days / 365.25)
+    return pd.Series(np.clip(p, 1e-4, 0.999), index=cells.index)
 
 
 def _landslide_susceptibility(cells: pd.DataFrame, inventory: pd.DataFrame,
@@ -172,15 +191,9 @@ def _landslide_susceptibility(cells: pd.DataFrame, inventory: pd.DataFrame,
     import numpy as np
     if inventory is None or inventory.empty:
         return pd.Series(0.3, index=cells.index)
-    elat = inventory["lat"].to_numpy(); elon = inventory["lon"].to_numpy()
-    h = bandwidth_km
-    dens = []
-    for la, lo in zip(cells["lat"], cells["lon"]):
-        coslat = np.cos(np.radians(la))
-        dy = (elat - la) * 111.0
-        dx = (elon - lo) * 111.0 * coslat
-        dens.append(float(np.exp(-(dx * dx + dy * dy) / (2 * h * h)).sum()))
-    d = np.asarray(dens)
+    d = _smoothed_density(cells["lat"].to_numpy(), cells["lon"].to_numpy(),
+                          inventory["lat"].to_numpy(), inventory["lon"].to_numpy(),
+                          bandwidth_km)
     # Normalize by a high percentile (robust to a few dense clusters), floor 0.15.
     scale = np.percentile(d, 95) or 1.0
     return pd.Series(np.clip(0.15 + 0.85 * d / scale, 0.0, 1.0), index=cells.index)

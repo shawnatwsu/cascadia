@@ -27,75 +27,92 @@ HAZARD_TITLES = {
     "p_wildfire": "Wildfire", "p_earthquake": "Earthquake", "p_heat": "Heat",
 }
 
+# Per-hazard themed colormaps so each panel reads as "what it is" at a glance.
+HAZARD_CMAPS = {
+    "compound_risk": "inferno_r",
+    "p_flood": "Blues",
+    "p_landslide": "YlOrBr",
+    "p_wildfire": "YlOrRd",
+    "p_earthquake": "Purples",
+    "p_heat": "hot_r",
+}
+
 
 def _grid(risk: pd.DataFrame, col: str):
     piv = risk.pivot_table(index="lat", columns="lon", values=col)
     return piv.columns.to_numpy(), piv.index.to_numpy(), piv.to_numpy()
 
 
-def _draw(ax, lons, lats, Z, cmap, norm):
+def _add_boundaries(ax, lons, lats):
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
-    mesh = ax.pcolormesh(lons, lats, Z, cmap=cmap, norm=norm,
-                         transform=ccrs.PlateCarree(), shading="nearest")
     try:
-        ax.add_feature(cfeature.STATES.with_scale("50m"), edgecolor="0.3", linewidth=0.6)
-        ax.coastlines("50m", color="0.2", linewidth=0.6)
-        ax.add_feature(cfeature.OCEAN.with_scale("50m"), facecolor="#dfe7ef")
+        ax.add_feature(cfeature.OCEAN.with_scale("50m"), facecolor="#dfe7ef", zorder=0)
+        ax.add_feature(cfeature.STATES.with_scale("50m"), edgecolor="0.25", linewidth=0.5)
+        ax.coastlines("50m", color="0.15", linewidth=0.5)
     except Exception:
-        pass  # boundary download optional; the data still renders
+        pass
     ax.set_extent([lons.min(), lons.max(), lats.min(), lats.max()],
                   crs=ccrs.PlateCarree())
-    gl = ax.gridlines(draw_labels=True, linewidth=0.3, color="0.7", alpha=0.5)
+    gl = ax.gridlines(draw_labels=True, linewidth=0.3, color="0.75", alpha=0.5)
     gl.top_labels = gl.right_labels = False
-    return mesh
+    gl.xlabel_style = gl.ylabel_style = {"size": 7}
+
+
+def _panel(fig, ax, lons, lats, Z, col):
+    """Draw one hazard panel, auto-scaled, with its own colorbar beneath it."""
+    import cartopy.crs as ccrs
+    import numpy as np
+    cmap = HAZARD_CMAPS.get(col, "YlOrRd")
+    finite = Z[np.isfinite(Z)]
+    vmax = float(np.nanpercentile(finite, 98)) if finite.size else 1.0
+    vmax = max(vmax, 1e-4)
+    mesh = ax.pcolormesh(lons, lats, Z, cmap=cmap, vmin=0.0, vmax=vmax,
+                         transform=ccrs.PlateCarree(), shading="nearest")
+    _add_boundaries(ax, lons, lats)
+    ax.set_title(HAZARD_TITLES.get(col, col), fontsize=11, weight="bold")
+    cb = fig.colorbar(mesh, ax=ax, orientation="horizontal",
+                      fraction=0.05, pad=0.04, aspect=28)
+    # Probability label; flag the auto-scale so small-range hazards are honest.
+    lab = "P over horizon" + (f"  (max≈{vmax:.3f})" if vmax < 0.1 else "")
+    cb.set_label(lab, fontsize=8)
+    cb.ax.tick_params(labelsize=7)
 
 
 def static_risk_map(risk: pd.DataFrame, region_name: str,
                     out_path: str | Path = "cascadia_risk_map.png",
                     panels: bool = True, as_of: str = "live") -> Path:
-    """Render the risk surface. If panels, show compound + each hazard."""
+    """Render the risk surface; each panel gets its own themed, auto-scaled
+    colormap and colorbar so every hazard's spatial structure is legible."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import cartopy.crs as ccrs
-    from matplotlib.colors import BoundaryNorm, ListedColormap
 
-    cmap = ListedColormap(RISK_COLORS)
-    norm = BoundaryNorm(RISK_BINS, cmap.N)
     proj = ccrs.LambertConformal(
         central_longitude=float(np.nanmean(risk["lon"])),
         central_latitude=float(np.nanmean(risk["lat"])))
 
     cols = ["compound_risk"]
     if panels:
-        cols += [c for c in ["p_flood", "p_landslide", "p_wildfire", "p_earthquake", "p_heat"]
-                 if c in risk.columns]
+        cols += [c for c in ["p_flood", "p_landslide", "p_wildfire",
+                             "p_earthquake", "p_heat"] if c in risk.columns]
 
-    if len(cols) == 1:
-        fig, axes = plt.subplots(1, 1, figsize=(9, 8),
-                                 subplot_kw={"projection": proj})
-        axes = [axes]
-    else:
-        fig, axes = plt.subplots(2, 3, figsize=(16, 10),
-                                 subplot_kw={"projection": proj})
-        axes = axes.ravel()
+    ncol = 3 if len(cols) > 1 else 1
+    nrow = int(np.ceil(len(cols) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(5.4 * ncol, 4.6 * nrow),
+                             subplot_kw={"projection": proj},
+                             constrained_layout=True)
+    axes = np.atleast_1d(axes).ravel()
 
-    mesh = None
     for ax, col in zip(axes, cols):
         lons, lats, Z = _grid(risk, col)
-        mesh = _draw(ax, lons, lats, Z, cmap, norm)
-        ax.set_title(HAZARD_TITLES.get(col, col), fontsize=11, weight="bold")
+        _panel(fig, ax, lons, lats, Z, col)
     for ax in axes[len(cols):]:
         ax.axis("off")
 
-    cbar = fig.colorbar(mesh, ax=axes, orientation="horizontal",
-                        fraction=0.045, pad=0.06, aspect=40,
-                        ticks=RISK_BINS)
-    cbar.set_label("Hazard probability over the forecast horizon", fontsize=10)
     fig.suptitle(f"Cascadia — compound & cascading hazard risk\n{region_name}  ·  {as_of}",
-                 fontsize=14, weight="bold")
-
+                 fontsize=15, weight="bold")
     out_path = Path(out_path)
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close(fig)
