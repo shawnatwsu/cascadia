@@ -42,14 +42,17 @@ KELVIN_VARS = {"tmax_c", "tmin_c"}
 
 def region_daily(bbox: tuple[float, float, float, float], start: str, end: str,
                  cache_dir: Path, variables: list[str] | None = None,
-                 verbose: bool = True) -> xr.Dataset:
+                 stride: int = 1, verbose: bool = True) -> xr.Dataset:
     """Daily GRIDMET cube for a bbox (min_lon,min_lat,max_lon,max_lat) + period.
 
-    Cached to a local NetCDF so the (already fast) OPeNDAP pull happens once.
+    `stride` coarsens the native 4 km grid (e.g. stride=6 -> ~24 km) so big
+    regions like CONUS don't pull ~1 GB when the render grid is coarse anyway.
+    Cached to a local NetCDF so the OPeNDAP pull happens once.
     """
     minlon, minlat, maxlon, maxlat = bbox
     variables = variables or list(VARS)
-    tag = f"gridmet_{minlon}_{minlat}_{maxlon}_{maxlat}_{start}_{end}".replace(".", "p")
+    tag = (f"gridmet_{minlon}_{minlat}_{maxlon}_{maxlat}_{start}_{end}_s{stride}"
+           .replace(".", "p"))
     cache = Path(cache_dir) / f"{tag}.nc"
     if cache.exists():
         if verbose:
@@ -66,6 +69,9 @@ def region_daily(bbox: tuple[float, float, float, float], start: str, end: str,
             da = ds[primary].sel(lat=slice(maxlat, minlat),
                                  lon=slice(minlon, maxlon),
                                  day=slice(start, end))
+            if stride > 1:
+                da = da.isel(lat=slice(None, None, stride),
+                             lon=slice(None, None, stride))
             if short in KELVIN_VARS:
                 da = da - 273.15
             data[short] = da.load()

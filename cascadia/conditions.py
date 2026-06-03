@@ -32,6 +32,8 @@ REGIONS = {
     "california": (-124.5, 32.5, -114.1, 42.1),
 }
 DEFAULT_RES = {"pnw": 0.1, "california": 0.1, "conus": 0.25}
+# GRIDMET stride (native 4km): coarsen for big regions to bound the download.
+GRIDMET_STRIDE = {"pnw": 1, "california": 1, "conus": 6}
 
 
 def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
@@ -60,7 +62,8 @@ def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
 
     # --- GRIDMET 4km met + fire/heat -------------------------------------
     gstart, gend = gridmet_window(cfg)
-    cube = region_daily(bbox, gstart, gend, cfg.cache_dir, verbose=False)
+    cube = region_daily(bbox, gstart, gend, cfg.cache_dir,
+                        stride=GRIDMET_STRIDE.get(region_key, 1), verbose=False)
     log(f"GRIDMET {dict(cube.sizes)} ({gstart}..{gend})")
     gm = derive_cell_features(cube, cells)
     cells = cells.merge(gm, on="cell_id", how="left")
