@@ -53,6 +53,7 @@ def _grid(risk: pd.DataFrame, col: str):
 def _add_boundaries(ax, lons, lats):
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
+    from matplotlib.ticker import MaxNLocator
     try:
         ax.add_feature(cfeature.OCEAN.with_scale("50m"), facecolor="#dfe7ef", zorder=0)
         ax.add_feature(cfeature.STATES.with_scale("50m"), edgecolor="0.25", linewidth=0.5)
@@ -61,37 +62,68 @@ def _add_boundaries(ax, lons, lats):
         pass
     ax.set_extent([lons.min(), lons.max(), lats.min(), lats.max()],
                   crs=ccrs.PlateCarree())
-    gl = ax.gridlines(draw_labels=True, linewidth=0.3, color="0.75", alpha=0.5)
+    # Clean edge labels only — no criss-cross gridlines across the map.
+    gl = ax.gridlines(draw_labels=True, linewidth=0)
+    gl.xlines = gl.ylines = False
     gl.top_labels = gl.right_labels = False
-    gl.xlabel_style = gl.ylabel_style = {"size": 7}
+    gl.xlocator = MaxNLocator(4)
+    gl.ylocator = MaxNLocator(4)
+    gl.xlabel_style = gl.ylabel_style = {"size": 8}
+
+
+def _bin_edges(vmax: float) -> np.ndarray:
+    """Nice, rounded discrete class edges from 0 to vmax (per-hazard)."""
+    from matplotlib.ticker import MaxNLocator
+    edges = MaxNLocator(nbins=6, min_n_ticks=4).tick_values(0.0, vmax)
+    edges = edges[edges >= 0]
+    if edges[0] > 0:
+        edges = np.insert(edges, 0, 0.0)
+    return edges
+
+
+def _fmt(v: float, vmax: float) -> str:
+    if vmax < 0.01:
+        return f"{v:.4f}".rstrip("0").rstrip(".")
+    if vmax < 0.1:
+        return f"{v:.3f}".rstrip("0").rstrip(".")
+    return f"{v:.2f}"
 
 
 def _panel(fig, ax, lons, lats, Z, col):
-    """Draw one hazard panel, auto-scaled, with its own colorbar beneath it."""
+    """Draw one hazard panel with a discrete, per-hazard binned colorbar that
+    spans the full subplot width."""
     import cartopy.crs as ccrs
-    import numpy as np
-    cmap = HAZARD_CMAPS.get(col, "YlOrRd")
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
     finite = Z[np.isfinite(Z)]
     vmax = float(np.nanpercentile(finite, 98)) if finite.size else 1.0
     vmax = max(vmax, 1e-4)
-    mesh = ax.pcolormesh(lons, lats, Z, cmap=cmap, vmin=0.0, vmax=vmax,
+    edges = _bin_edges(vmax)
+    base = plt.get_cmap(HAZARD_CMAPS.get(col, "YlOrRd"))
+    cmap = ListedColormap(base(np.linspace(0.15, 1.0, len(edges) - 1)))
+    norm = BoundaryNorm(edges, cmap.N)
+
+    mesh = ax.pcolormesh(lons, lats, Z, cmap=cmap, norm=norm,
                          transform=ccrs.PlateCarree(), shading="nearest")
     _add_boundaries(ax, lons, lats)
     ax.set_title(HAZARD_TITLES.get(col, col), fontsize=11, weight="bold")
-    cb = fig.colorbar(mesh, ax=ax, orientation="horizontal",
-                      fraction=0.05, pad=0.04, aspect=28)
-    # Probability label; flag the auto-scale so small-range hazards are honest.
-    lab = "P over horizon" + (f"  (max≈{vmax:.3f})" if vmax < 0.1 else "")
-    cb.set_label(lab, fontsize=8)
+
+    cb = fig.colorbar(mesh, ax=ax, orientation="horizontal", location="bottom",
+                      shrink=1.0, fraction=0.07, pad=0.06, ticks=edges,
+                      spacing="proportional")
+    cb.set_ticklabels([_fmt(e, vmax) for e in edges])
+    cb.set_label("probability over horizon", fontsize=8)
     cb.ax.tick_params(labelsize=7)
 
 
 def static_risk_map(risk: pd.DataFrame, region_name: str,
                     out_path: str | Path = "cascadia_risk_map.png",
                     panels: bool = True, as_of: str = "live",
-                    cols: list[str] | None = None, suptitle: str | None = None) -> Path:
-    """Render the risk surface; each panel gets its own themed, auto-scaled
-    colormap and colorbar so every hazard's spatial structure is legible.
+                    cols: list[str] | None = None, suptitle: str | None = None,
+                    description: str | None = None) -> Path:
+    """Render the risk surface; each panel gets its own themed, binned colormap
+    and a full-width colorbar so every hazard's spatial structure is legible.
 
     Pass `cols` to render an arbitrary set of layers (e.g. sub-seasonal outlooks).
     """
@@ -100,9 +132,7 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
     import matplotlib.pyplot as plt
     import cartopy.crs as ccrs
 
-    proj = ccrs.LambertConformal(
-        central_longitude=float(np.nanmean(risk["lon"])),
-        central_latitude=float(np.nanmean(risk["lat"])))
+    proj = ccrs.PlateCarree()  # straight, rectangular axes with clean lon/lat
 
     if cols is None:
         cols = ["compound_risk"]
@@ -123,8 +153,17 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
     for ax in axes[len(cols):]:
         ax.axis("off")
 
-    fig.suptitle(suptitle or f"Cascadia — compound & cascading hazard risk\n{region_name}  ·  {as_of}",
-                 fontsize=15, weight="bold")
+    title = suptitle or f"Cascadia — compound & cascading multi-hazard risk\n{region_name}  ·  {as_of}"
+    fig.suptitle(title, fontsize=15, weight="bold")
+    # Descriptive sub-subtitle: explain exactly what the panels show.
+    desc = description or (
+        "Each panel: probability that the hazard occurs in each grid cell over the "
+        "forecast horizon. Compound = P(at least one hazard). Hazards are fused "
+        "through a cascade graph (one hazard can trigger another). Colors are "
+        "binned and scaled per panel, so classes differ between hazards — read "
+        "each panel's own colorbar.")
+    fig.text(0.5, -0.01, desc, ha="center", va="top", fontsize=8.5,
+             color="0.25", wrap=True)
     out_path = Path(out_path)
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close(fig)
