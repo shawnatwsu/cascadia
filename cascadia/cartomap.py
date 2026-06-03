@@ -24,7 +24,7 @@ RISK_COLORS = ["#1a9850", "#66bd63", "#a6d96a", "#fee08b",
 HAZARD_TITLES = {
     "compound_risk": "Compound risk  (P any hazard)",
     "p_flood": "Flood", "p_landslide": "Landslide",
-    "p_wildfire": "Wildfire", "p_earthquake": "Earthquake",
+    "p_wildfire": "Wildfire", "p_earthquake": "Earthquake", "p_heat": "Heat",
 }
 
 
@@ -69,7 +69,7 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
 
     cols = ["compound_risk"]
     if panels:
-        cols += [c for c in ["p_flood", "p_landslide", "p_wildfire", "p_earthquake"]
+        cols += [c for c in ["p_flood", "p_landslide", "p_wildfire", "p_earthquake", "p_heat"]
                  if c in risk.columns]
 
     if len(cols) == 1:

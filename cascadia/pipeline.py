@@ -31,8 +31,9 @@ class PipelineResult:
         from .models.predictors import HAZARDS
         from .models.trained import load_trained
         # Method for the non-trained leaves (data-driven where applicable).
-        method = {"earthquake": "seismic-prior", "wildfire": "HDW-index",
-                  "landslide": "suscept×trigger", "flood": "heuristic"}
+        method = {"earthquake": "seismic-prior", "wildfire": "GRIDMET-fire",
+                  "landslide": "suscept×trigger", "flood": "heuristic",
+                  "heat": "heat-index"}
         parts = []
         for hz in HAZARDS:
             t = load_trained(hz)
@@ -77,6 +78,18 @@ def run_pipeline(config: Config | None = None, verbose: bool = True) -> Pipeline
     for k, v in raw.items():
         log(f"   {k}: {len(v)} rows")
 
+    # GRIDMET (4km CONUS) fire/heat variables — graceful if unavailable.
+    gridmet_cube = None
+    try:
+        from .sources.gridmet import region_daily, gridmet_window
+        r = config.region
+        gstart, gend = gridmet_window(config)
+        gridmet_cube = region_daily((r.min_lon, r.min_lat, r.max_lon, r.max_lat),
+                                    gstart, gend, config.cache_dir, verbose=False)
+        log(f"   gridmet: {dict(gridmet_cube.sizes)} ({gstart}..{gend})")
+    except Exception as exc:
+        log(f"   gridmet: unavailable ({str(exc)[:60]}) — using fallback fire/heat")
+
     log("• Building grid + fusing cross-sector indicators…")
     grid = Grid.from_region(config.region)
     features = build_indicators(
@@ -88,6 +101,7 @@ def run_pipeline(config: Config | None = None, verbose: bool = True) -> Pipeline
         fires=raw["fires"],
         catalog=raw["catalog"],
         inventory=raw["inventory"],
+        gridmet_cube=gridmet_cube,
         horizon_days=config.horizon_days,
     )
     log(f"   {len(features)} cells x {features.shape[1]} features")

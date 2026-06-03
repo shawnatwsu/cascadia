@@ -86,3 +86,70 @@ def point_daily(cube: xr.Dataset, lat: float, lon: float) -> pd.DataFrame:
     """Extract a point's daily series from a region cube (instant, local)."""
     p = cube.sel(lat=lat, lon=lon, method="nearest")
     return p.to_dataframe().reset_index().set_index("time")
+
+
+def gridmet_window(config) -> tuple[str, str]:
+    """Target window for GRIDMET. Historical: the as-of window. Live: the most
+    recent ~12 days (GRIDMET has ~5-day latency, so 'now' isn't available)."""
+    from datetime import timedelta
+    if config.is_historical:
+        s, e = config.window()
+        return s.date().isoformat(), e.date().isoformat()
+    import datetime as _dt
+    today = _dt.datetime.utcnow().date()
+    return (today - timedelta(days=12)).isoformat(), (today - timedelta(days=2)).isoformat()
+
+
+def heat_index_c(t_c, rh):
+    """NWS heat index (deg C) from temperature (deg C) and RH (%).
+
+    Rothfusz regression (computed in deg F, returned in deg C). Below ~27 deg C
+    the heat index is ~the air temperature."""
+    import numpy as np
+    t = np.asarray(t_c, float) * 9 / 5 + 32
+    r = np.clip(np.asarray(rh, float), 0, 100)
+    hi = (-42.379 + 2.04901523 * t + 10.14333127 * r - 0.22475541 * t * r
+          - 6.83783e-3 * t * t - 5.481717e-2 * r * r + 1.22874e-3 * t * t * r
+          + 8.5282e-4 * t * r * r - 1.99e-6 * t * t * r * r)
+    hi = np.where(t < 80, t, hi)
+    return (hi - 32) * 5 / 9
+
+
+def wet_bulb_c(t_c, rh):
+    """Wet-bulb temperature (deg C) via Stull (2011), from T (deg C) and RH (%)."""
+    import numpy as np
+    t = np.asarray(t_c, float); r = np.clip(np.asarray(rh, float), 1, 100)
+    return (t * np.arctan(0.151977 * np.sqrt(r + 8.313659))
+            + np.arctan(t + r) - np.arctan(r - 1.676331)
+            + 0.00391838 * r ** 1.5 * np.arctan(0.023101 * r) - 4.686035)
+
+
+def derive_cell_features(cube: xr.Dataset, cells: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate the GRIDMET cube over its time window and sample at each grid
+    cell, returning fire- and heat-danger features keyed by cell_id."""
+    import numpy as np
+    # Window aggregations: peak danger / driest fuels.
+    agg = {
+        "gm_burning_index": ("burning_index", "max"),
+        "gm_erc": ("erc", "max"),
+        "gm_fm100": ("fm100", "min"),
+        "gm_fm1000": ("fm1000", "min"),
+        "gm_vpd": ("vpd_kpa", "max"),
+        "gm_tmax": ("tmax_c", "max"),
+        "gm_rhmin": ("rh_min", "min"),
+        "gm_wind": ("wind_ms", "max"),
+    }
+    tlat = xr.DataArray(cells["lat"].to_numpy(), dims="cell")
+    tlon = xr.DataArray(cells["lon"].to_numpy(), dims="cell")
+    out = {"cell_id": cells["cell_id"].to_numpy()}
+    for name, (var, how) in agg.items():
+        if var not in cube:
+            continue
+        field = getattr(cube[var], how)("time")
+        out[name] = field.sel(lat=tlat, lon=tlon, method="nearest").to_numpy()
+    df = pd.DataFrame(out)
+    # Heat metrics from peak temperature + concurrent (afternoon ~= min) RH.
+    if "gm_tmax" in df and "gm_rhmin" in df:
+        df["heat_index_c"] = heat_index_c(df["gm_tmax"], df["gm_rhmin"])
+        df["wet_bulb_c"] = wet_bulb_c(df["gm_tmax"], df["gm_rhmin"])
+    return df

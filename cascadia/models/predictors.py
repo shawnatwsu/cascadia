@@ -18,7 +18,7 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
-HAZARDS = ["earthquake", "landslide", "flood", "wildfire"]
+HAZARDS = ["earthquake", "landslide", "flood", "wildfire", "heat"]
 
 
 def _sigmoid(x: np.ndarray | float) -> np.ndarray | float:
@@ -85,20 +85,46 @@ def _p_wildfire(f: pd.DataFrame) -> np.ndarray:
     fw = f["alert_fire_weather"].to_numpy()
     dryness = 1.0 - _saturation(f["soil_moist_peak"].to_numpy())
     fire_obs = np.clip(f["active_fire"].to_numpy(), 0, None) if "active_fire" in f else 0.0
-    # Fire-weather danger from the Hot-Dry-Windy index (hourly-max over horizon).
-    # HDW ~ <50 low, ~120 elevated, 200+ extreme.
-    if "hdw" in f:
+
+    if "gm_burning_index" in f:
+        # Preferred: GRIDMET operational fire-danger (NFDRS). Burning Index and
+        # Energy Release Component rise with danger; 100-hr fuel moisture falls.
+        bi = f["gm_burning_index"].to_numpy()
+        erc = f["gm_erc"].to_numpy() if "gm_erc" in f else bi
+        fm = f["gm_fm100"].to_numpy() if "gm_fm100" in f else np.full(len(f), 12.0)
+        danger = _sigmoid((bi - 45.0) / 18.0)
+        erc_d = _sigmoid((erc - 55.0) / 18.0)
+        fuel_dry = _sigmoid((11.0 - fm) / 3.0)
+        fw_idx = np.clip(0.45 * danger + 0.3 * erc_d + 0.25 * fuel_dry, 0, 1)
+    elif "hdw" in f:
         fw_idx = _sigmoid((f["hdw"].to_numpy() - 120.0) / 40.0)
     else:
         fw_idx = _sigmoid(3.0 * (dryness - 0.7))
+
     # Danger is NOT occurrence: ignition is required, so map to a conservative,
-    # capped probability that fire affects the cell over the horizon. Rain
-    # suppresses; dry fuels and a red-flag warning raise it.
-    suppress = np.exp(-precip / 25.0)
-    p_base = 0.45 * fw_idx * (0.3 + 0.7 * dryness) * suppress
-    p_base = np.clip(p_base + 0.15 * fw, 0.0, 0.6)
-    # Observed FIRMS detections are direct evidence and dominate.
+    # capped probability that fire affects the cell over the horizon.
+    p_base = np.clip(0.5 * fw_idx + 0.15 * fw, 0.0, 0.6)
     return 1.0 - (1.0 - p_base) * (1.0 - np.clip(np.tanh(fire_obs), 0, 1))
+
+
+def _p_heat(f: pd.DataFrame) -> np.ndarray:
+    """Dangerous-heat probability from the heat index and wet-bulb temperature.
+
+    NWS thresholds: heat index ~32 C extreme caution, ~39 C danger, ~51 C
+    extreme danger. Wet-bulb > ~28 C is dangerous, > ~31 C approaches the
+    physiological limit. We take the noisy-OR of the two danger signals.
+    """
+    if "heat_index_c" in f:
+        hi = f["heat_index_c"].to_numpy()
+        p = _sigmoid((hi - 38.0) / 4.0)
+        if "wet_bulb_c" in f:
+            wb = f["wet_bulb_c"].to_numpy()
+            p_wb = _sigmoid((wb - 28.0) / 2.0)
+            p = 1.0 - (1.0 - p) * (1.0 - p_wb)
+        return np.asarray(p)
+    if "temp_max" in f:
+        return _sigmoid((f["temp_max"].to_numpy() - 36.0) / 3.0)
+    return np.full(len(f), 0.01)
 
 
 PREDICTORS: dict[str, Predictor] = {
@@ -106,6 +132,7 @@ PREDICTORS: dict[str, Predictor] = {
     "landslide": _p_landslide,
     "flood": _p_flood,
     "wildfire": _p_wildfire,
+    "heat": _p_heat,
 }
 
 

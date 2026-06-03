@@ -81,7 +81,8 @@ def assess_point(lat: float, lon: float, config: Config | None = None,
     risk = res.risk
     d2 = (risk["lat"] - lat) ** 2 + (risk["lon"] - lon) ** 2
     row = risk.loc[d2.idxmin()]
-    hazards = {h: float(row[f"p_{h}"]) for h in ["earthquake", "landslide", "flood", "wildfire"]
+    hazards = {h: float(row[f"p_{h}"]) for h in
+               ["earthquake", "landslide", "flood", "wildfire", "heat"]
                if f"p_{h}" in row}
     return ParcelRisk(
         lat=lat, lon=lon, address=address,

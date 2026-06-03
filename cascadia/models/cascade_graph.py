@@ -158,5 +158,10 @@ def default_cascade() -> CascadeGraph:
     g.add_edge("landslide", "flood", w=0.30,
                gate=lambda c: 0.3 + 0.7 * float(c.get("flow_anomaly", 0.0)),
                rationale="landslide dams impound then release water downstream")
+    # heat -> wildfire: heatwaves dry fuels and prime ignition/spread; stronger
+    # where soils are already dry.
+    g.add_edge("heat", "wildfire", w=0.25,
+               gate=lambda c: 0.3 + 0.7 * (1.0 - _saturation(c)),
+               rationale="heatwaves desiccate fuels, raising fire potential")
 
     return CascadeGraph(g=g)

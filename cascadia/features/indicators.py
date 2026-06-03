@@ -195,6 +195,7 @@ def build_indicators(
     fires: pd.DataFrame | None = None,
     catalog: pd.DataFrame | None = None,
     inventory: pd.DataFrame | None = None,
+    gridmet_cube=None,
     horizon_days: int = 7,
 ) -> pd.DataFrame:
     """Fuse all sources into one per-cell indicator table."""
@@ -219,6 +220,16 @@ def build_indicators(
 
     # --- Landslide susceptibility prior (smoothed USGS inventory density).
     cells["ls_susceptibility"] = _landslide_susceptibility(cells, inventory)
+
+    # --- GRIDMET 4km fire/heat variables (burning index, ERC, fuel moisture,
+    #     VPD, heat index, wet-bulb), sampled to cells. Optional.
+    if gridmet_cube is not None:
+        try:
+            from ..sources.gridmet import derive_cell_features
+            gm = derive_cell_features(gridmet_cube, cells)
+            cells = cells.merge(gm, on="cell_id", how="left")
+        except Exception:
+            pass
 
     # --- Hydro-met forecast: nearest-join the coarse forecast points to every
     #     cell, yielding a smooth field (no sparse exact-match / mean-fill artifacts).
