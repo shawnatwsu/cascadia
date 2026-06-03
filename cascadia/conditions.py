@@ -38,7 +38,7 @@ GRIDMET_STRIDE = {"pnw": 1, "california": 1, "conus": 6}
 
 def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
                    out_path: str | Path = "cascadia_conditions_map.png",
-                   verbose: bool = True):
+                   verbose: bool = True, render: bool = True):
     """Build and render the GRIDMET conditions nowcast for a named region."""
     from .sources.gridmet import (derive_cell_features, gridmet_window,
                                    region_daily)
@@ -127,6 +127,10 @@ def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
     log(f"risk computed: compound mean {risk['compound_risk'].mean():.3f} "
         f"max {risk['compound_risk'].max():.3f}")
 
+    if not render:
+        risk.attrs["region_name"] = region.name
+        risk.attrs["res"] = res
+        return risk, None
     out = static_risk_map(risk, region.name, out_path, panels=True, as_of="nowcast")
     log(f"Map written: {out}")
     return risk, out

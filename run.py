@@ -117,6 +117,16 @@ def cmd_conditions(args: list[str]) -> None:
     _open(Path(out).resolve().as_uri())
 
 
+def cmd_impact(args: list[str]) -> None:
+    region = (args[0].lower() if args else "conus")
+    from cascadia.impact import impact_map
+    print(f"Building expected-IMPACT map for {region.upper()} "
+          "(hazard probability x population)…\n")
+    _, out = impact_map(region)
+    print(f"\n✓ Impact map: {out}")
+    _open(Path(out).resolve().as_uri())
+
+
 def cmd_subseasonal(args: list[str]) -> None:
     from cascadia.subseasonal import subseasonal_outlook
     from cascadia.conditions import REGIONS
@@ -139,6 +149,7 @@ COMMANDS = {
     "parcel": cmd_parcel,
     "conditions": cmd_conditions,
     "subseasonal": cmd_subseasonal,
+    "impact": cmd_impact,
 }
 
 

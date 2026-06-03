@@ -42,6 +42,20 @@ HAZARD_TITLES.update({
     "fire_outlook": "Fire potential outlook (wk 2-6)",
     "heat_outlook": "Heat outlook (wk 2-6)",
     "drought_outlook": "Drought / dryness outlook (wk 2-6)",
+    # exposure & impact layers
+    "population": "Population (per cell)",
+    "expected_affected": "Expected people affected (any hazard)",
+    "impact_flood": "Flood — expected people affected",
+    "impact_landslide": "Landslide — expected people affected",
+    "impact_wildfire": "Wildfire — expected people affected",
+    "impact_heat": "Heat — expected people affected",
+    "impact_earthquake": "Earthquake — expected people affected",
+})
+HAZARD_CMAPS.update({
+    "population": "BuPu", "expected_affected": "magma_r",
+    "impact_flood": "Blues", "impact_landslide": "YlOrBr",
+    "impact_wildfire": "YlOrRd", "impact_heat": "hot_r",
+    "impact_earthquake": "Purples",
 })
 
 
@@ -82,6 +96,12 @@ def _bin_edges(vmax: float) -> np.ndarray:
 
 
 def _fmt(v: float, vmax: float) -> str:
+    if vmax >= 1_000_000:
+        return f"{v/1e6:.1f}M"
+    if vmax >= 1000:
+        return f"{v/1e3:.0f}k" if v >= 1000 else f"{v:.0f}"
+    if vmax >= 10:
+        return f"{v:.0f}"
     if vmax < 0.01:
         return f"{v:.4f}".rstrip("0").rstrip(".")
     if vmax < 0.1:
@@ -89,7 +109,7 @@ def _fmt(v: float, vmax: float) -> str:
     return f"{v:.2f}"
 
 
-def _panel(fig, ax, lons, lats, Z, col):
+def _panel(fig, ax, lons, lats, Z, col, value_label="probability over horizon"):
     """Draw one hazard panel with a discrete, per-hazard binned colorbar that
     spans the full subplot width."""
     import cartopy.crs as ccrs
@@ -113,7 +133,7 @@ def _panel(fig, ax, lons, lats, Z, col):
                       shrink=1.0, fraction=0.07, pad=0.06, ticks=edges,
                       spacing="proportional")
     cb.set_ticklabels([_fmt(e, vmax) for e in edges])
-    cb.set_label("probability over horizon", fontsize=8)
+    cb.set_label(value_label, fontsize=8)
     cb.ax.tick_params(labelsize=7)
 
 
@@ -121,7 +141,8 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
                     out_path: str | Path = "cascadia_risk_map.png",
                     panels: bool = True, as_of: str = "live",
                     cols: list[str] | None = None, suptitle: str | None = None,
-                    description: str | None = None) -> Path:
+                    description: str | None = None,
+                    value_label: str = "probability over horizon") -> Path:
     """Render the risk surface; each panel gets its own themed, binned colormap
     and a full-width colorbar so every hazard's spatial structure is legible.
 
@@ -149,7 +170,7 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
 
     for ax, col in zip(axes, cols):
         lons, lats, Z = _grid(risk, col)
-        _panel(fig, ax, lons, lats, Z, col)
+        _panel(fig, ax, lons, lats, Z, col, value_label=value_label)
     for ax in axes[len(cols):]:
         ax.axis("off")
 
