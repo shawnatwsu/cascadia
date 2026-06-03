@@ -8,6 +8,7 @@ __pycache__/
 data/
 *.log
 *_risk_map.html
+*_risk_map.png
 
 # Editor / OS
 .vscode/

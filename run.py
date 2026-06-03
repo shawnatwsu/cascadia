@@ -31,7 +31,7 @@ def _open(path_or_url: str) -> None:
 def cmd_map(args: list[str]) -> None:
     from cascadia.config import Config
     from cascadia.pipeline import run_pipeline
-    from cascadia.viz import risk_map
+    from cascadia.cartomap import static_risk_map
 
     print("Running Cascadia on live open feeds (first run fetches data)…\n")
     cfg = Config.load()
@@ -39,10 +39,11 @@ def cmd_map(args: list[str]) -> None:
     print("\n" + res.summary())
     print("\nTop risk cells:\n" + res.top_cells(8).to_string(index=False))
 
-    out = ROOT / "cascadia_risk_map.html"
-    risk_map(res.risk, cfg.region.name, cfg.region.grid_resolution_deg, out)
+    as_of = cfg.as_of.date().isoformat() if cfg.as_of else "live"
+    out = ROOT / "cascadia_risk_map.png"
+    static_risk_map(res.risk, cfg.region.name, out, panels=True, as_of=as_of)
     print(f"\n✓ Map written: {out}")
-    print("  Opening it in your browser…")
+    print("  Opening it…")
     _open(out.resolve().as_uri())
 
 

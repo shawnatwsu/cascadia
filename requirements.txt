@@ -13,3 +13,12 @@ python-dateutil>=2.9
 global-land-mask>=1.0
 fastapi>=0.110
 uvicorn[standard]>=0.29
+# Cartographic static maps
+cartopy>=0.22
+# Gridded climate data: GRIDMET (OPeNDAP) + ERA5 (ARCO Zarr)
+xarray>=2024.1
+netCDF4>=1.6
+pydap>=3.4
+zarr>=2.17
+gcsfs>=2024.2
+dask>=2024.1
