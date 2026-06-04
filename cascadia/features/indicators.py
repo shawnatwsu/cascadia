@@ -96,8 +96,17 @@ def _forecast_point_features(weather: pd.DataFrame, horizon_days: int) -> pd.Dat
             w["temperature_2m"].to_numpy(), w["relative_humidity_2m"].to_numpy(),
             w["wind_speed_10m"].to_numpy()))
         agg_spec["hdw"] = ("hdw_h", "max")
-    agg = w.groupby(["lat", "lon"]).agg(**agg_spec)
-    return agg.reset_index()
+    has_wd = "wind_direction_10m" in w.columns
+    if has_wd:
+        rad = np.radians(w["wind_direction_10m"].to_numpy())
+        w = w.assign(_wd_sin=np.sin(rad), _wd_cos=np.cos(rad))
+        agg_spec["_wd_sin"] = ("_wd_sin", "mean")
+        agg_spec["_wd_cos"] = ("_wd_cos", "mean")
+    agg = w.groupby(["lat", "lon"]).agg(**agg_spec).reset_index()
+    if has_wd:  # circular-mean wind direction
+        agg["wind_dir"] = (np.degrees(np.arctan2(agg["_wd_sin"], agg["_wd_cos"])) % 360)
+        agg = agg.drop(columns=["_wd_sin", "_wd_cos"])
+    return agg
 
 
 def hot_dry_windy(temp_c: np.ndarray, rh_pct: np.ndarray,
@@ -181,6 +190,42 @@ def _seismic_base_prob(cells: pd.DataFrame, catalog: pd.DataFrame,
     return pd.Series(np.clip(p, 1e-4, 0.999), index=cells.index)
 
 
+def smoke_potential(cell_lat, cell_lon, fire_lat, fire_lon, fire_frp,
+                    wind_from_deg, scale_km: float = 150.0,
+                    radius_km: float = 500.0):
+    """Downwind wildfire-smoke exposure potential per cell.
+
+    For each cell, sum the fire radiative power of nearby FIRMS detections,
+    weighted by distance decay AND by whether the fire lies *upwind* of the cell
+    (so smoke is carried toward it). `wind_from_deg` is the meteorological wind
+    direction (degrees the wind blows FROM) at each cell. This is a simple
+    plume-transport proxy — smoke reaches cities hundreds of km downwind of fires.
+    """
+    import numpy as np
+    from scipy.spatial import cKDTree
+    n = len(cell_lat)
+    if len(fire_lat) == 0:
+        return np.zeros(n)
+    lat0 = float(np.mean(cell_lat))
+    kx = 111.0 * np.cos(np.radians(lat0))
+    fxy = np.column_stack([np.asarray(fire_lon) * kx, np.asarray(fire_lat) * 111.0])
+    cxy = np.column_stack([np.asarray(cell_lon) * kx, np.asarray(cell_lat) * 111.0])
+    frp = np.clip(np.asarray(fire_frp, float), 0, None)
+    tree = cKDTree(fxy)
+    th = np.radians(np.asarray(wind_from_deg, float))
+    out = np.zeros(n)
+    for i, nbrs in enumerate(tree.query_ball_point(cxy, radius_km, workers=-1)):
+        if not nbrs:
+            continue
+        d = fxy[nbrs] - cxy[i]                      # vector cell -> fire
+        dist = np.sqrt((d ** 2).sum(axis=1)) + 1e-6
+        bearing = np.arctan2(d[:, 0], d[:, 1])      # clockwise from north
+        # Fire is upwind when its bearing matches where the wind comes from.
+        align = np.clip(np.cos(bearing - th[i]), 0, 1)
+        out[i] = float((frp[nbrs] * np.exp(-dist / scale_km) * align).sum())
+    return out
+
+
 def _landslide_susceptibility(cells: pd.DataFrame, inventory: pd.DataFrame,
                               bandwidth_km: float = 8.0) -> pd.Series:
     """Relative landslide susceptibility in [0,1] from smoothed historical
@@ -252,6 +297,7 @@ def build_indicators(
     cells["temp_max"] = _nearest_join(cells, fc, "temp_max")
     cells["rh_min"] = _nearest_join(cells, fc, "rh_min")
     cells["wind_max"] = _nearest_join(cells, fc, "wind_max")
+    cells["wind_dir"] = _nearest_join(cells, fc, "wind_dir")
     # Physically-based fire-weather danger (operational HDW index), computed
     # hourly upstream and carried through as the window max.
     cells["hdw"] = _nearest_join(cells, fc, "hdw")
@@ -266,8 +312,16 @@ def build_indicators(
         fc_fire = grid.assign(fires).dropna(subset=["cell_id"])
         counts = fc_fire.groupby("cell_id").size()
         cells["active_fire"] = cells["cell_id"].map(counts).fillna(0.0)
+        # Downwind smoke-exposure potential (fire radiative power carried toward
+        # the cell by the wind). Needs wind direction; 0 if unavailable.
+        frp = fires["value"] if "value" in fires else pd.Series(1.0, index=fires.index)
+        cells["smoke_potential"] = smoke_potential(
+            cells["lat"].to_numpy(), cells["lon"].to_numpy(),
+            fires["lat"].to_numpy(), fires["lon"].to_numpy(), frp.to_numpy(),
+            cells["wind_dir"].to_numpy())
     else:
         cells["active_fire"] = 0.0
+        cells["smoke_potential"] = 0.0
 
     # --- Official warnings: coarse regional flags from active NWS alerts
     fams = set(alerts["family"].unique()) if not alerts.empty and "family" in alerts else set()

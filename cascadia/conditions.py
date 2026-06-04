@@ -108,17 +108,27 @@ def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
     cells["ls_susceptibility"] = _landslide_susceptibility(cells, inv)
     log(f"priors: {len(cat)} quakes, {len(inv)} landslides")
 
-    # --- observed fire + (no regional alerts in nowcast mode) ------------
+    # --- observed fire + downwind smoke transport ------------------------
+    from .features.indicators import smoke_potential
+    cells["wind_dir"] = cells.get("gm_wind_dir", 0.0)
     try:
         fires = FIRMS(cfg).fetch()
         if fires is not None and not fires.empty:
             fc = grid.assign(fires).dropna(subset=["cell_id"])
             cnt = fc.groupby("cell_id").size()
             cells["active_fire"] = cells["cell_id"].map(cnt).fillna(0.0)
+            frp = fires["value"] if "value" in fires else pd.Series(1.0, index=fires.index)
+            cells["smoke_potential"] = smoke_potential(
+                cells["lat"].to_numpy(), cells["lon"].to_numpy(),
+                fires["lat"].to_numpy(), fires["lon"].to_numpy(), frp.to_numpy(),
+                cells["wind_dir"].to_numpy())
+            log(f"smoke: {len(fires)} fire detections -> downwind potential")
         else:
             cells["active_fire"] = 0.0
+            cells["smoke_potential"] = 0.0
     except Exception:
         cells["active_fire"] = 0.0
+        cells["smoke_potential"] = 0.0
     cells["alert_flood"] = cells["alert_fire_weather"] = cells["alert_heat"] = 0.0
 
     # --- predict (heuristics; trained flood needs soil moisture) ---------

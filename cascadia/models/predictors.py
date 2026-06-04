@@ -18,7 +18,7 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
-HAZARDS = ["earthquake", "landslide", "flood", "wildfire", "heat"]
+HAZARDS = ["earthquake", "landslide", "flood", "wildfire", "heat", "smoke"]
 
 
 def _sigmoid(x: np.ndarray | float) -> np.ndarray | float:
@@ -127,12 +127,27 @@ def _p_heat(f: pd.DataFrame) -> np.ndarray:
     return np.full(len(f), 0.01)
 
 
+def _p_smoke(f: pd.DataFrame) -> np.ndarray:
+    """Wildfire-smoke air-quality hazard from downwind smoke-exposure potential.
+
+    `smoke_potential` is a plume-transport proxy (fire radiative power carried
+    downwind toward the cell). Mapped to a conservative probability of unhealthy
+    smoke/air quality. Relative without observed PM2.5 calibration; observed
+    AirNow/PurpleAir AQI can refine it later.
+    """
+    if "smoke_potential" in f:
+        sp = np.clip(f["smoke_potential"].to_numpy(), 0, None)
+        return np.clip(np.tanh(sp / 300.0), 1e-4, 0.95)
+    return np.full(len(f), 1e-4)
+
+
 PREDICTORS: dict[str, Predictor] = {
     "earthquake": _p_earthquake,
     "landslide": _p_landslide,
     "flood": _p_flood,
     "wildfire": _p_wildfire,
     "heat": _p_heat,
+    "smoke": _p_smoke,
 }
 
 

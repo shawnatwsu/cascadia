@@ -28,6 +28,7 @@ VARS: dict[str, str] = {
     "rh_max": "rmax",
     "rh_min": "rmin",
     "wind_ms": "vs",
+    "wind_dir": "th",
     "srad_wm2": "srad",
     "vpd_kpa": "vpd",
     "burning_index": "bi",
@@ -154,6 +155,12 @@ def derive_cell_features(cube: xr.Dataset, cells: pd.DataFrame) -> pd.DataFrame:
             continue
         field = getattr(cube[var], how)("time")
         out[name] = field.sel(lat=tlat, lon=tlon, method="nearest").to_numpy()
+    # Wind direction needs a circular mean over the window (not max/min).
+    if "wind_dir" in cube:
+        th = np.radians(cube["wind_dir"])
+        wd = (np.degrees(np.arctan2(np.sin(th).mean("time"),
+                                    np.cos(th).mean("time"))) % 360)
+        out["gm_wind_dir"] = wd.sel(lat=tlat, lon=tlon, method="nearest").to_numpy()
     df = pd.DataFrame(out)
     # Heat metrics from peak temperature + concurrent (afternoon ~= min) RH.
     if "gm_tmax" in df and "gm_rhmin" in df:

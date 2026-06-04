@@ -163,5 +163,11 @@ def default_cascade() -> CascadeGraph:
     g.add_edge("heat", "wildfire", w=0.25,
                gate=lambda c: 0.3 + 0.7 * (1.0 - _saturation(c)),
                rationale="heatwaves desiccate fuels, raising fire potential")
+    # wildfire -> smoke: fires emit smoke that degrades air quality downwind.
+    # Self-initiation already encodes downwind transport; this edge links the
+    # local fire to its own smoke so the cascade chain reads fire -> smoke.
+    g.add_edge("wildfire", "smoke", w=0.5,
+               gate=lambda c: 1.0,
+               rationale="active fire emits smoke; air quality degrades downwind")
 
     return CascadeGraph(g=g)

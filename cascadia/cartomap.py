@@ -25,6 +25,7 @@ HAZARD_TITLES = {
     "compound_risk": "Compound risk  (P any hazard)",
     "p_flood": "Flood", "p_landslide": "Landslide",
     "p_wildfire": "Wildfire", "p_earthquake": "Earthquake", "p_heat": "Heat",
+    "p_smoke": "Wildfire smoke / air quality",
 }
 
 # Per-hazard themed colormaps so each panel reads as "what it is" at a glance.
@@ -35,6 +36,7 @@ HAZARD_CMAPS = {
     "p_wildfire": "YlOrRd",
     "p_earthquake": "Purples",
     "p_heat": "hot_r",
+    "p_smoke": "Greys",
     # sub-seasonal (weeks 2-6) outlook layers
     "fire_outlook": "YlOrRd", "heat_outlook": "hot_r", "drought_outlook": "YlOrBr",
 }
@@ -159,7 +161,7 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
         cols = ["compound_risk"]
         if panels:
             cols += [c for c in ["p_flood", "p_landslide", "p_wildfire",
-                                 "p_earthquake", "p_heat"] if c in risk.columns]
+                                 "p_earthquake", "p_heat", "p_smoke"] if c in risk.columns]
 
     ncol = 3 if len(cols) > 1 else 1
     nrow = int(np.ceil(len(cols) / ncol))

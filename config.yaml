@@ -24,7 +24,7 @@ sources:
     user_agent: "Cascadia-hazard-engine (research; contact: boredbunniesyc@gmail.com)"
   open_meteo:
     # No API key. Precip + soil moisture forecast.
-    hourly: ["precipitation", "temperature_2m", "relative_humidity_2m", "wind_speed_10m", "soil_moisture_0_to_1cm", "soil_moisture_27_to_81cm"]
+    hourly: ["precipitation", "temperature_2m", "relative_humidity_2m", "wind_speed_10m", "wind_direction_10m", "soil_moisture_0_to_1cm", "soil_moisture_27_to_81cm"]
     forecast_days: 7
     sample_step: 0.25   # deg between forecast sample points (smaller = more
                         # real spatial gradient, but more API calls)
