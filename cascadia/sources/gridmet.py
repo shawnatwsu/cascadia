@@ -60,33 +60,45 @@ def region_daily(bbox: tuple[float, float, float, float], start: str, end: str,
             print(f"GRIDMET cube (cached): {cache.name}")
         return xr.open_dataset(cache)
 
-    data = {}
+    import time as _time
+    data, failed = {}, []
     for short in variables:
         code = VARS[short]
         url = THREDDS.format(code=code)
-        try:
-            ds = xr.open_dataset(url, engine="pydap")
-            primary = [v for v in ds.data_vars if v != "crs"][0]
-            da = ds[primary].sel(lat=slice(maxlat, minlat),
-                                 lon=slice(minlon, maxlon),
-                                 day=slice(start, end))
-            if stride > 1:
-                da = da.isel(lat=slice(None, None, stride),
-                             lon=slice(None, None, stride))
-            if short in KELVIN_VARS:
-                da = da - 273.15
-            data[short] = da.load()
-            if verbose:
-                print(f"  GRIDMET {short:<13} ({code}) {dict(da.sizes)}")
-        except Exception as exc:
-            if verbose:
-                print(f"  GRIDMET {short} FAILED: {repr(exc)[:120]}")
+        for attempt in range(3):  # OPeNDAP can be flaky; retry per variable
+            try:
+                ds = xr.open_dataset(url, engine="pydap")
+                primary = [v for v in ds.data_vars if v != "crs"][0]
+                da = ds[primary].sel(lat=slice(maxlat, minlat),
+                                     lon=slice(minlon, maxlon),
+                                     day=slice(start, end))
+                if stride > 1:
+                    da = da.isel(lat=slice(None, None, stride),
+                                 lon=slice(None, None, stride))
+                if short in KELVIN_VARS:
+                    da = da - 273.15
+                data[short] = da.load()
+                if verbose:
+                    print(f"  GRIDMET {short:<13} ({code}) {dict(da.sizes)}")
+                break
+            except Exception as exc:
+                if attempt == 2:
+                    failed.append(short)
+                    if verbose:
+                        print(f"  GRIDMET {short} FAILED: {repr(exc)[:120]}")
+                else:
+                    _time.sleep(2 * (attempt + 1))
 
     cube = xr.Dataset(data).rename({"day": "time"})
-    try:
-        cube.to_netcdf(cache)
-    except Exception:
-        pass
+    # Only cache a COMPLETE cube — never persist a partial fetch (that caused
+    # silent KeyErrors downstream when a variable was missing from the cache).
+    if not failed:
+        try:
+            cube.to_netcdf(cache)
+        except Exception:
+            pass
+    elif verbose:
+        print(f"  (not caching: {len(failed)} variable(s) failed: {failed})")
     return cube
 
 

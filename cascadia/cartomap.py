@@ -23,14 +23,22 @@ RISK_COLORS = ["#1a9850", "#66bd63", "#a6d96a", "#fee08b",
 
 HAZARD_TITLES = {
     "compound_risk": "Compound risk  (P any hazard)",
+    "expected_hazards": "Expected number of hazards",
     "p_flood": "Flood", "p_landslide": "Landslide",
     "p_wildfire": "Wildfire", "p_earthquake": "Earthquake", "p_heat": "Heat",
     "p_smoke": "Wildfire smoke / air quality",
 }
 
+# Per-column colorbar units (otherwise the figure-level value_label is used).
+COL_VALUE_LABEL = {
+    "expected_hazards": "expected # of hazards", "population": "people",
+    "compound_risk": "P(any hazard)",
+}
+
 # Per-hazard themed colormaps so each panel reads as "what it is" at a glance.
 HAZARD_CMAPS = {
     "compound_risk": "inferno_r",
+    "expected_hazards": "inferno_r",
     "p_flood": "Blues",
     "p_landslide": "YlOrBr",
     "p_wildfire": "YlOrRd",
@@ -137,7 +145,7 @@ def _panel(fig, ax, lons, lats, Z, col, value_label="probability over horizon"):
                       shrink=1.0, fraction=0.07, pad=0.06, ticks=edges,
                       spacing="proportional")
     cb.set_ticklabels([_fmt(e, vmax) for e in edges])
-    cb.set_label(value_label, fontsize=8)
+    cb.set_label(COL_VALUE_LABEL.get(col, value_label), fontsize=8)
     cb.ax.tick_params(labelsize=7)
 
 
@@ -146,7 +154,8 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
                     panels: bool = True, as_of: str = "live",
                     cols: list[str] | None = None, suptitle: str | None = None,
                     description: str | None = None,
-                    value_label: str = "probability over horizon") -> Path:
+                    value_label: str = "probability over horizon",
+                    provenance: str | None = None) -> Path:
     """Render the risk surface; each panel gets its own themed, binned colormap
     and a full-width colorbar so every hazard's spatial structure is legible.
 
@@ -157,10 +166,16 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
     import matplotlib.pyplot as plt
     import cartopy.crs as ccrs
 
-    proj = ccrs.PlateCarree()  # straight, rectangular axes with clean lon/lat
+    # Albers Equal-Area for CONUS — areas (and population/impact sums) are
+    # visually honest, the standard for US thematic maps.
+    proj = ccrs.AlbersEqualArea(central_longitude=-96, central_latitude=37.5,
+                                standard_parallels=(29.5, 45.5))
 
     if cols is None:
-        cols = ["compound_risk"]
+        # Lead with "expected number of hazards" (P(any) saturates and is
+        # uninformative when several hazards are elevated everywhere).
+        lead = "expected_hazards" if "expected_hazards" in risk.columns else "compound_risk"
+        cols = [lead]
         if panels:
             cols += [c for c in ["p_flood", "p_landslide", "p_wildfire",
                                  "p_earthquake", "p_heat", "p_smoke"] if c in risk.columns]
@@ -183,12 +198,17 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
     # Descriptive sub-subtitle: explain exactly what the panels show.
     desc = description or (
         "Each panel: probability that the hazard occurs in each grid cell over the "
-        "forecast horizon. Compound = P(at least one hazard). Hazards are fused "
-        "through a cascade graph (one hazard can trigger another). Colors are "
-        "binned and scaled per panel, so classes differ between hazards — read "
-        "each panel's own colorbar.")
+        "forecast horizon. Lead panel = expected number of hazards (sum of the "
+        "per-hazard probabilities; P(any) saturates when several are elevated). "
+        "Hazards are fused through a cascade graph (one hazard can trigger "
+        "another). Colors are binned and scaled per panel, so classes differ "
+        "between hazards — read each panel's own colorbar.")
     fig.text(0.5, -0.01, desc, ha="center", va="top", fontsize=8.5,
              color="0.25", wrap=True)
+    # Provenance line (valid window + data sources) for research-grade rigor.
+    prov = provenance or "Sources: GRIDMET, USGS, NWS, Open-Meteo/ERA5, NASA FIRMS, US Census"
+    fig.text(0.995, 0.002, prov, ha="right", va="bottom", fontsize=7,
+             color="0.45", style="italic")
     out_path = Path(out_path)
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close(fig)

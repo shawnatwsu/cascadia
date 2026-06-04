@@ -91,6 +91,9 @@ def subseasonal_outlook(region_key: str = "pnw", out_path: str | Path =
         cols=["fire_outlook", "drought_outlook", "heat_outlook"],
         suptitle=("Cascadia — sub-seasonal hazard outlook (weeks 2-6)\n"
                   f"{region.name}  ·  land-memory persistence baseline"),
+        value_label="outlook tendency (0-1)",
+        provenance=(f"GRIDMET 90-day slow-memory state ({start}–{end}) · "
+                    "persistence baseline · Albers equal-area"),
         description=(
             "Weeks 2-6 outlook tendency (0-1) for slow-memory hazards, from current "
             "land-surface state: 1000-hr dead-fuel moisture, energy release "

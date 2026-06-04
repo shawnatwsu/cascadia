@@ -58,6 +58,8 @@ def impact_map(region: str = "conus", out_path: str | Path = "cascadia_impact_ma
     out = static_risk_map(
         risk, region_name, out_path, cols=cols,
         value_label="expected people affected (per cell)",
+        provenance=("Hazard: GRIDMET/USGS/FIRMS nowcast · Exposure: US Census "
+                    "county population (2023) · Albers equal-area"),
         suptitle=(f"Cascadia — expected hazard IMPACT\n{region_name}  ·  "
                   "probability x population"),
         description=(

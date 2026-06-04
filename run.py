@@ -41,7 +41,10 @@ def cmd_map(args: list[str]) -> None:
 
     as_of = cfg.as_of.date().isoformat() if cfg.as_of else "live"
     out = ROOT / "cascadia_risk_map.png"
-    static_risk_map(res.risk, cfg.region.name, out, panels=True, as_of=as_of)
+    static_risk_map(res.risk, cfg.region.name, out, panels=True, as_of=as_of,
+                    value_label="hazard probability (next 7 days)",
+                    provenance=("Open-Meteo 7-day forecast · USGS seismicity+streamflow "
+                                "· USGS landslide inventory · NASA FIRMS · Albers equal-area"))
     print(f"\n✓ Map written: {out}")
     print("  Opening it…")
     _open(out.resolve().as_uri())

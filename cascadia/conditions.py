@@ -143,6 +143,16 @@ def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
         risk.attrs["region_name"] = region.name
         risk.attrs["res"] = res
         return risk, None
-    out = static_risk_map(risk, region.name, out_path, panels=True, as_of="nowcast")
+    out = static_risk_map(
+        risk, region.name, out_path, panels=True, as_of="nowcast",
+        value_label="hazard probability (current conditions)",
+        provenance=(f"GRIDMET {gstart}–{gend} (4km) · USGS seismicity+streamflow "
+                    "· USGS landslide inventory · NASA FIRMS · Albers equal-area"),
+        description=(
+            "NOWCAST of current hazard conditions (not a forward forecast). Each "
+            "panel: probability the hazard is active in each ~4 km cell given "
+            "present conditions. Lead panel = expected number of hazards "
+            "(P(any) saturates when several are elevated). Hazards fused through a "
+            "cascade graph. Per-panel binned scales — read each colorbar."))
     log(f"Map written: {out}")
     return risk, out
