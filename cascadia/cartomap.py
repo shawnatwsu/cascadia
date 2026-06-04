@@ -74,14 +74,15 @@ def _grid(risk: pd.DataFrame, col: str):
     return piv.columns.to_numpy(), piv.index.to_numpy(), piv.to_numpy()
 
 
-def _add_boundaries(ax, lons, lats):
+def _add_boundaries(ax, lons, lats, boundaries=None):
     import cartopy.crs as ccrs
     from matplotlib.ticker import MaxNLocator
     # White background, US state outlines only (no ocean tint, no Mexico/Canada).
     ax.set_facecolor("white")
     try:
         from .geo import conus_states
-        ax.add_geometries(conus_states(), ccrs.PlateCarree(), facecolor="none",
+        geoms = boundaries if boundaries is not None else conus_states()
+        ax.add_geometries(geoms, ccrs.PlateCarree(), facecolor="none",
                           edgecolor="0.4", linewidth=0.4, zorder=3)
     except Exception:
         import cartopy.feature as cfeature
@@ -121,7 +122,8 @@ def _fmt(v: float, vmax: float) -> str:
     return f"{v:.2f}"
 
 
-def _panel(fig, ax, lons, lats, Z, col, value_label="probability over horizon"):
+def _panel(fig, ax, lons, lats, Z, col, value_label="probability over horizon",
+           boundaries=None):
     """Draw one hazard panel with a discrete, per-hazard binned colorbar that
     spans the full subplot width."""
     import cartopy.crs as ccrs
@@ -138,7 +140,7 @@ def _panel(fig, ax, lons, lats, Z, col, value_label="probability over horizon"):
 
     mesh = ax.pcolormesh(lons, lats, Z, cmap=cmap, norm=norm,
                          transform=ccrs.PlateCarree(), shading="nearest")
-    _add_boundaries(ax, lons, lats)
+    _add_boundaries(ax, lons, lats, boundaries=boundaries)
     ax.set_title(HAZARD_TITLES.get(col, col), fontsize=11, weight="bold")
 
     cb = fig.colorbar(mesh, ax=ax, orientation="horizontal", location="bottom",
@@ -155,7 +157,7 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
                     cols: list[str] | None = None, suptitle: str | None = None,
                     description: str | None = None,
                     value_label: str = "probability over horizon",
-                    provenance: str | None = None) -> Path:
+                    provenance: str | None = None, boundaries=None) -> Path:
     """Render the risk surface; each panel gets its own themed, binned colormap
     and a full-width colorbar so every hazard's spatial structure is legible.
 
@@ -189,7 +191,8 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
 
     for ax, col in zip(axes, cols):
         lons, lats, Z = _grid(risk, col)
-        _panel(fig, ax, lons, lats, Z, col, value_label=value_label)
+        _panel(fig, ax, lons, lats, Z, col, value_label=value_label,
+               boundaries=boundaries)
     for ax in axes[len(cols):]:
         ax.axis("off")
 
@@ -203,12 +206,13 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
         "Hazards are fused through a cascade graph (one hazard can trigger "
         "another). Colors are binned and scaled per panel, so classes differ "
         "between hazards — read each panel's own colorbar.")
-    fig.text(0.5, -0.01, desc, ha="center", va="top", fontsize=8.5,
-             color="0.25", wrap=True)
-    # Provenance line (valid window + data sources) for research-grade rigor.
+    # One caption block BELOW the panels (description + provenance), so nothing
+    # overlaps the colorbars or their labels.
     prov = provenance or "Sources: GRIDMET, USGS, NWS, Open-Meteo/ERA5, NASA FIRMS, US Census"
-    fig.text(0.995, 0.002, prov, ha="right", va="bottom", fontsize=7,
-             color="0.45", style="italic")
+    fig.text(0.5, -0.02, desc, ha="center", va="top", fontsize=8.5,
+             color="0.25", wrap=True)
+    fig.text(0.5, -0.13, prov, ha="center", va="top", fontsize=7.5,
+             color="0.45", style="italic", wrap=True)
     out_path = Path(out_path)
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close(fig)

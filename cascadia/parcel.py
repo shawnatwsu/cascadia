@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from pathlib import Path
+
 import pandas as pd
 
 from .config import Config
@@ -92,6 +94,86 @@ def assess_point(lat: float, lon: float, config: Config | None = None,
         co_occurring=str(row.get("co_occurring", "")),
         hazards=hazards,
     )
+
+
+def parcel_report(address: str, out_path: str | Path = "cascadia_parcel_map.png",
+                  config: Config | None = None, verbose: bool = True):
+    """Render a one-page parcel hazard report: a locator map of the area (with a
+    marker on the address) beside a bar chart of that address's hazard
+    probabilities."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import cartopy.crs as ccrs
+    import numpy as np
+    from .cartomap import _grid, _bin_edges, _fmt, HAZARD_CMAPS, HAZARD_TITLES
+    from matplotlib.colors import BoundaryNorm, ListedColormap
+
+    config = config or Config.load()
+    g = geocode(address, config)
+    if not g.matched:
+        if verbose:
+            print(f"Could not geocode: {address}")
+        return None
+    pr = assess_point(g.lat, g.lon, config=config, state=g.state,
+                      address=g.matched_address)
+
+    # Re-run on the parcel's neighbourhood to get a risk surface to map.
+    buf = 0.4
+    bbox = (g.lon - buf, g.lat - buf, g.lon + buf, g.lat + buf)
+    cfg = config.with_region(bbox, name="parcel area", state=g.state)
+    risk = run_pipeline(cfg, verbose=False).risk
+
+    proj = ccrs.AlbersEqualArea(central_longitude=g.lon, central_latitude=g.lat)
+    fig = plt.figure(figsize=(13, 5.6))
+    ax = fig.add_subplot(1, 2, 1, projection=proj)
+    lons, lats, Z = _grid(risk, "expected_hazards")
+    vmax = max(float(np.nanpercentile(Z[np.isfinite(Z)], 98)), 0.5)
+    edges = _bin_edges(vmax)
+    base = plt.get_cmap("inferno_r")
+    cmap = ListedColormap(base(np.linspace(0.15, 1.0, len(edges) - 1)))
+    mesh = ax.pcolormesh(lons, lats, Z, cmap=cmap, norm=BoundaryNorm(edges, cmap.N),
+                         transform=ccrs.PlateCarree(), shading="nearest")
+    try:
+        from .geo import conus_states
+        ax.add_geometries(conus_states(), ccrs.PlateCarree(), facecolor="none",
+                          edgecolor="0.4", linewidth=0.5)
+    except Exception:
+        pass
+    ax.plot(g.lon, g.lat, marker="*", markersize=20, color="#00d2ff",
+            markeredgecolor="black", transform=ccrs.PlateCarree(), zorder=5)
+    ax.set_extent([bbox[0], bbox[2], bbox[1], bbox[3]], crs=ccrs.PlateCarree())
+    ax.set_title("Expected number of hazards (next 7 days)", fontsize=11, weight="bold")
+    cb = fig.colorbar(mesh, ax=ax, orientation="horizontal", location="bottom",
+                      shrink=1.0, fraction=0.06, pad=0.05, ticks=edges)
+    cb.set_ticklabels([_fmt(e, vmax) for e in edges]); cb.set_label("expected # of hazards")
+
+    # Bar chart of this parcel's per-hazard probabilities.
+    ax2 = fig.add_subplot(1, 2, 2)
+    order = sorted(pr.hazards.items(), key=lambda kv: kv[1])
+    names = [HAZARD_TITLES.get(f"p_{k}", k) for k, _ in order]
+    vals = [v for _, v in order]
+    colors = [plt.get_cmap(HAZARD_CMAPS.get(f"p_{k}", "YlOrRd"))(0.7) for k, _ in order]
+    bars = ax2.barh(names, vals, color=colors, edgecolor="0.3")
+    for b, v in zip(bars, vals):
+        ax2.text(v + 0.01, b.get_y() + b.get_height() / 2, f"{v:.2f}",
+                 va="center", fontsize=9)
+    ax2.set_xlim(0, max(0.3, max(vals) * 1.25))
+    ax2.set_xlabel("probability over next 7 days")
+    ax2.set_title("Hazard probabilities at this address", fontsize=11, weight="bold")
+    ax2.grid(axis="x", alpha=0.3)
+
+    fig.suptitle(f"Cascadia parcel hazard report\n{pr.address}", fontsize=13, weight="bold")
+    fig.text(0.5, 0.005, f"Compound risk (any hazard): {pr.compound_risk:.2f}  ·  "
+             f"expected # hazards: {pr.expected_hazards:.2f}  ·  "
+             f"dominant cascade: {pr.dominant_chain or '—'}", ha="center", fontsize=9, color="0.3")
+    fig.tight_layout(rect=[0, 0.03, 1, 0.93])
+    out_path = Path(out_path)
+    fig.savefig(out_path, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    if verbose:
+        print(f"Parcel report written: {out_path}")
+    return out_path
 
 
 def assess_address(address: str, config: Config | None = None) -> dict:

@@ -12,10 +12,15 @@ each, take its primary data variable, and merge into one daily cube (cached).
 """
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pandas as pd
 import xarray as xr
+
+# Quiet the harmless OPeNDAP/encoding notices GRIDMET emits on every variable.
+warnings.filterwarnings("ignore", message=".*_Unsigned attribute.*")
+warnings.filterwarnings("ignore", message=".*PyDAP was unable to determine.*")
 
 THREDDS = ("http://thredds.northwestknowledge.net:8080/thredds/dodsC/"
            "agg_met_{code}_1979_CurrentYear_CONUS.nc")

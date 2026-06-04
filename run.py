@@ -101,11 +101,15 @@ def cmd_parcel(args: list[str]) -> None:
     if not args:
         print('Usage: python run.py parcel "123 Main St, City, ST"')
         return
-    from cascadia.parcel import assess_address
+    from cascadia.parcel import assess_address, parcel_report
     import json
     address = " ".join(args)
     print(f"Assessing: {address}\n(geocoding + running the cascade engine at that point…)\n")
     print(json.dumps(assess_address(address), indent=2))
+    out = parcel_report(address)
+    if out:
+        print(f"\n✓ Parcel report map: {out}")
+        _open(Path(out).resolve().as_uri())
 
 
 def cmd_conditions(args: list[str]) -> None:

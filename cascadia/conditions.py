@@ -36,6 +36,32 @@ DEFAULT_RES = {"pnw": 0.1, "california": 0.1, "conus": 0.25}
 GRIDMET_STRIDE = {"pnw": 1, "california": 1, "conus": 6}
 
 
+def _resolve_region(region_key: str, resolution_deg: float | None = None):
+    """Return (bbox, res, stride, label, mask_fn, boundary_states) for a region.
+
+    Supports the legacy bbox regions (pnw/california/conus) and the NCA5 regions
+    (state-based: northwest, southwest, midwest, southeast, northeast, ...).
+    """
+    from . import geo
+    if region_key in REGIONS:
+        bbox = REGIONS[region_key]
+        res = resolution_deg or DEFAULT_RES.get(region_key, 0.1)
+        return (bbox, res, GRIDMET_STRIDE.get(region_key, 1),
+                f"{region_key.upper()} conditions", geo.mask_conus, geo.conus_states())
+    if region_key in geo.NCA5_REGIONS:
+        return (geo.region_bbox(region_key), resolution_deg or 0.1, 2,
+                f"{geo.NCA5_NAMES[region_key]} conditions",
+                lambda c, k=region_key: geo.mask_region(c, k),
+                geo.region_states(region_key))
+    raise ValueError(f"unknown region '{region_key}'. "
+                     f"options: {list(REGIONS) + list(geo.NCA5_REGIONS)}")
+
+
+def region_keys() -> list:
+    from . import geo
+    return list(REGIONS) + list(geo.NCA5_REGIONS)
+
+
 def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
                    out_path: str | Path = "cascadia_conditions_map.png",
                    verbose: bool = True, render: bool = True):
@@ -47,25 +73,25 @@ def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
     from .sources import USGSWater, FIRMS
     from .cartomap import static_risk_map
 
-    bbox = REGIONS[region_key]
-    res = resolution_deg or DEFAULT_RES.get(region_key, 0.1)
+    from . import geo
+    bbox, res, stride, region_label, mask_fn, boundary_states = _resolve_region(
+        region_key, resolution_deg)
     base = Config.load()
-    region = Region(name=f"{region_key.upper()} conditions", bbox=bbox,
+    region = Region(name=region_label, bbox=bbox,
                     state=base.region.state, grid_resolution_deg=res)
     cfg = Config(region=region, horizon_days=base.horizon_days,
                  sources=base.sources, cache_dir=base.cache_dir, raw=base.raw)
 
     grid = Grid.from_region(region)
     cells = grid.cells_frame(land_only=True)
-    from .geo import mask_conus
-    cells = mask_conus(cells)   # contiguous-US land only (drops MX/CA/ocean)
+    cells = mask_fn(cells)   # clip to the region's US land (clean state borders)
     log = (lambda *a: print(*a)) if verbose else (lambda *a: None)
     log(f"{region.name}: {len(cells)} cells @ {res}° ({bbox})")
 
     # --- GRIDMET 4km met + fire/heat -------------------------------------
     gstart, gend = gridmet_window(cfg)
     cube = region_daily(bbox, gstart, gend, cfg.cache_dir,
-                        stride=GRIDMET_STRIDE.get(region_key, 1), verbose=False)
+                        stride=stride, verbose=False)
     log(f"GRIDMET {dict(cube.sizes)} ({gstart}..{gend})")
     gm = derive_cell_features(cube, cells)
     cells = cells.merge(gm, on="cell_id", how="left")
@@ -145,14 +171,18 @@ def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
         return risk, None
     out = static_risk_map(
         risk, region.name, out_path, panels=True, as_of="nowcast",
+        boundaries=boundary_states,
         value_label="hazard probability (current conditions)",
         provenance=(f"GRIDMET {gstart}–{gend} (4km) · USGS seismicity+streamflow "
                     "· USGS landslide inventory · NASA FIRMS · Albers equal-area"),
         description=(
-            "NOWCAST of current hazard conditions (not a forward forecast). Each "
-            "panel: probability the hazard is active in each ~4 km cell given "
-            "present conditions. Lead panel = expected number of hazards "
-            "(P(any) saturates when several are elevated). Hazards fused through a "
-            "cascade graph. Per-panel binned scales — read each colorbar."))
+            "IN PLAIN TERMS: a snapshot of how dangerous each hazard is RIGHT NOW "
+            "in every ~4 km cell, from recent weather and land conditions. Darker "
+            "= more dangerous. The first panel counts how many hazards are elevated "
+            "at once.   |   Method: GRIDMET weather/fire-danger + USGS earthquakes & "
+            "streamflow + USGS landslide history + NASA satellite fire detections, "
+            "combined through a cascade model where one hazard can trigger another "
+            "(e.g. fire -> smoke). This is a NOWCAST of current conditions, not a "
+            "forward forecast. Each panel has its own binned color scale."))
     log(f"Map written: {out}")
     return risk, out

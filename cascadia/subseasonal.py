@@ -21,7 +21,7 @@ import numpy as np
 import xarray as xr
 
 from .config import Config, Region
-from .conditions import REGIONS, DEFAULT_RES, GRIDMET_STRIDE
+from .conditions import _resolve_region
 from .features.grid import Grid
 
 
@@ -35,15 +35,14 @@ def subseasonal_outlook(region_key: str = "pnw", out_path: str | Path =
     from .sources.gridmet import region_daily
     from .cartomap import static_risk_map
 
-    bbox = REGIONS[region_key]
-    res = DEFAULT_RES.get(region_key, 0.1)
+    bbox, res, stride, label, mask_fn, boundary_states = _resolve_region(region_key)
     base = Config.load()
-    region = Region(name=f"{region_key.upper()} sub-seasonal", bbox=bbox,
+    region = Region(name=label.replace("conditions", "sub-seasonal"), bbox=bbox,
                     state=base.region.state, grid_resolution_deg=res)
     cfg = Config(region=region, horizon_days=base.horizon_days,
                  sources=base.sources, cache_dir=base.cache_dir, raw=base.raw)
     grid = Grid.from_region(region)
-    cells = grid.cells_frame(land_only=True)
+    cells = mask_fn(grid.cells_frame(land_only=True))
     log = (lambda *a: print(*a)) if verbose else (lambda *a: None)
     log(f"{region.name}: {len(cells)} cells")
 
@@ -53,7 +52,7 @@ def subseasonal_outlook(region_key: str = "pnw", out_path: str | Path =
     cube = region_daily(bbox, start.isoformat(), end.isoformat(), cfg.cache_dir,
                         variables=["fm1000", "erc", "precip_mm", "etr",
                                    "tmax_c", "vpd_kpa"],
-                        stride=GRIDMET_STRIDE.get(region_key, 1), verbose=False)
+                        stride=stride, verbose=False)
     log(f"GRIDMET 90d {dict(cube.sizes)} ({start}..{end})")
 
     la = xr.DataArray(cells["lat"].to_numpy(), dims="cell")
@@ -89,17 +88,21 @@ def subseasonal_outlook(region_key: str = "pnw", out_path: str | Path =
     out = static_risk_map(
         cells, region.name, out_path,
         cols=["fire_outlook", "drought_outlook", "heat_outlook"],
+        boundaries=boundary_states,
         suptitle=("Cascadia — sub-seasonal hazard outlook (weeks 2-6)\n"
                   f"{region.name}  ·  land-memory persistence baseline"),
         value_label="outlook tendency (0-1)",
         provenance=(f"GRIDMET 90-day slow-memory state ({start}–{end}) · "
                     "persistence baseline · Albers equal-area"),
         description=(
-            "Weeks 2-6 outlook tendency (0-1) for slow-memory hazards, from current "
-            "land-surface state: 1000-hr dead-fuel moisture, energy release "
-            "component, VPD and precipitation deficit, which persist for weeks. "
-            "This is a persistence baseline (not a dynamical S2S forecast); "
-            "fast, unpredictable variables (daily wind/precip) are excluded. "
-            "Colors are binned and scaled per panel — read each panel's colorbar."))
+            "IN PLAIN TERMS: dryness builds up slowly — in the soil, in the dead "
+            "vegetation that fuels wildfires, and in the air. Because that dryness "
+            "lingers for weeks, how dry things are right now is a strong clue to "
+            "fire, drought and heat risk over the NEXT 2-6 WEEKS. Darker = higher "
+            "risk.   |   Method: we read the slow-changing land state from GRIDMET "
+            "(1000-hr dead-fuel moisture, energy-release component, vapor-pressure "
+            "deficit, 90-day rain-minus-evaporation deficit) and carry it forward. "
+            "This is a persistence baseline, not a dynamical S2S model (CPC/NMME "
+            "are the planned upgrade). Each panel has its own binned color scale."))
     log(f"Map written: {out}")
     return cells, out

@@ -18,20 +18,89 @@ import numpy as np
 _EXCLUDE = {"Alaska", "Hawaii", "Puerto Rico", "United States Virgin Islands",
             "Guam", "American Samoa", "Commonwealth of the Northern Mariana Islands"}
 
+# 5th National Climate Assessment (NCA5) CONUS regions -> member states.
+NCA5_REGIONS: dict[str, tuple] = {
+    "northwest": ("Washington", "Oregon", "Idaho"),
+    "southwest": ("California", "Nevada", "Arizona", "New Mexico", "Utah", "Colorado"),
+    "northern_great_plains": ("Montana", "Wyoming", "North Dakota", "South Dakota",
+                              "Nebraska"),
+    "southern_great_plains": ("Kansas", "Oklahoma", "Texas"),
+    "midwest": ("Minnesota", "Iowa", "Missouri", "Wisconsin", "Illinois", "Indiana",
+                "Michigan", "Ohio"),
+    "southeast": ("Virginia", "Kentucky", "Tennessee", "North Carolina",
+                  "South Carolina", "Georgia", "Florida", "Alabama", "Mississippi",
+                  "Louisiana", "Arkansas"),
+    "northeast": ("West Virginia", "Maryland", "Delaware", "New Jersey",
+                  "Pennsylvania", "New York", "Connecticut", "Rhode Island",
+                  "Massachusetts", "Vermont", "New Hampshire", "Maine",
+                  "District of Columbia"),
+}
+NCA5_NAMES = {
+    "northwest": "Northwest", "southwest": "Southwest",
+    "northern_great_plains": "Northern Great Plains",
+    "southern_great_plains": "Southern Great Plains", "midwest": "Midwest",
+    "southeast": "Southeast", "northeast": "Northeast",
+}
+
 
 @lru_cache(maxsize=1)
-def conus_states() -> tuple:
+def state_geoms() -> dict:
+    """{state name -> geometry} for the contiguous US (+ DC)."""
     import cartopy.io.shapereader as shpreader
+    # Non-lakes version so Great-Lakes-shore land (Chicago, Detroit, Cleveland)
+    # is correctly inside its state rather than falling in a lake gap.
     path = shpreader.natural_earth(resolution="50m", category="cultural",
-                                   name="admin_1_states_provinces_lakes")
-    geoms = []
+                                   name="admin_1_states_provinces")
+    out = {}
     for rec in shpreader.Reader(path).records():
         a = rec.attributes
         admin = a.get("admin") or a.get("adm0_a3")
         name = a.get("name") or a.get("name_en") or ""
         if admin in ("United States of America", "USA") and name not in _EXCLUDE:
-            geoms.append(rec.geometry)
-    return tuple(geoms)
+            out[name] = rec.geometry
+    return out
+
+
+@lru_cache(maxsize=1)
+def conus_states() -> tuple:
+    return tuple(state_geoms().values())
+
+
+def region_states(region_key: str) -> tuple:
+    """State geometries for an NCA5 region (or all CONUS)."""
+    sg = state_geoms()
+    if region_key in NCA5_REGIONS:
+        return tuple(sg[s] for s in NCA5_REGIONS[region_key] if s in sg)
+    return conus_states()
+
+
+@lru_cache(maxsize=16)
+def region_geometry(region_key: str):
+    from shapely.ops import unary_union
+    return unary_union(list(region_states(region_key)))
+
+
+def region_bbox(region_key: str, pad: float = 0.3) -> tuple:
+    """Bounding box (min_lon,min_lat,max_lon,max_lat) of a region, padded."""
+    minx, miny, maxx, maxy = region_geometry(region_key).bounds
+    return (minx - pad, miny - pad, maxx + pad, maxy + pad)
+
+
+def mask_region(cells, region_key: str):
+    """Filter cells to a specific NCA5 region's states (clean state borders)."""
+    if cells.empty:
+        return cells
+    import shapely
+    geom = region_geometry(region_key)
+    lons = cells["lon"].to_numpy(); lats = cells["lat"].to_numpy()
+    try:
+        keep = np.asarray(shapely.contains_xy(geom, lons, lats), dtype=bool)
+    except Exception:
+        from shapely.geometry import Point
+        from shapely.prepared import prep
+        pg = prep(geom)
+        keep = np.array([pg.contains(Point(x, y)) for x, y in zip(lons, lats)])
+    return cells[keep].reset_index(drop=True)
 
 
 @lru_cache(maxsize=1)

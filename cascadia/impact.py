@@ -38,12 +38,13 @@ def impact_map(region: str = "conus", out_path: str | Path = "cascadia_impact_ma
                verbose: bool = True):
     """Compute the conditions risk for a region, weight by population, and render
     the expected-impact maps."""
-    from .conditions import conditions_map, DEFAULT_RES
+    from .conditions import conditions_map, DEFAULT_RES, _resolve_region
     from .cartomap import static_risk_map
 
     risk, _ = conditions_map(region, verbose=verbose, render=False)
     region_name = risk.attrs.get("region_name", region.upper())
     res = risk.attrs.get("res", DEFAULT_RES.get(region, 0.1))
+    boundary_states = _resolve_region(region)[5]
     risk = add_impact(risk, Config.load().cache_dir, res)
 
     total_pop = int(risk["population"].sum())
@@ -56,18 +57,20 @@ def impact_map(region: str = "conus", out_path: str | Path = "cascadia_impact_ma
             "impact_wildfire", "impact_heat", "population"]
     cols = [c for c in cols if c in risk.columns]
     out = static_risk_map(
-        risk, region_name, out_path, cols=cols,
+        risk, region_name, out_path, cols=cols, boundaries=boundary_states,
         value_label="expected people affected (per cell)",
         provenance=("Hazard: GRIDMET/USGS/FIRMS nowcast · Exposure: US Census "
                     "county population (2023) · Albers equal-area"),
         suptitle=(f"Cascadia — expected hazard IMPACT\n{region_name}  ·  "
                   "probability x population"),
         description=(
-            "Expected people affected = hazard probability x estimated cell "
-            "population (US Census county density). 'Expected people affected' "
-            "uses the compound risk (any hazard); per-hazard panels attribute it "
-            "to each hazard. Population panel shows the exposure surface. "
-            "Per-panel binned scales — read each colorbar."))
+            "IN PLAIN TERMS: not just where hazards are likely, but where they put "
+            "the most PEOPLE at risk. We multiply each hazard's probability by how "
+            "many people live in that cell, so dense cities stand out. Darker = "
+            "more people expected to be affected.   |   Method: hazard probabilities "
+            "(GRIDMET/USGS/FIRMS nowcast) x cell population from US Census county "
+            "data. The first panel uses the combined (any-hazard) risk; the rest "
+            "split it by hazard. Each panel has its own binned color scale."))
     if verbose:
         print(f"Impact map written: {out}")
     return risk, out
