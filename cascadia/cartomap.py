@@ -68,14 +68,16 @@ def _grid(risk: pd.DataFrame, col: str):
 
 def _add_boundaries(ax, lons, lats):
     import cartopy.crs as ccrs
-    import cartopy.feature as cfeature
     from matplotlib.ticker import MaxNLocator
+    # White background, US state outlines only (no ocean tint, no Mexico/Canada).
+    ax.set_facecolor("white")
     try:
-        ax.add_feature(cfeature.OCEAN.with_scale("50m"), facecolor="#dfe7ef", zorder=0)
-        ax.add_feature(cfeature.STATES.with_scale("50m"), edgecolor="0.25", linewidth=0.5)
-        ax.coastlines("50m", color="0.15", linewidth=0.5)
+        from .geo import conus_states
+        ax.add_geometries(conus_states(), ccrs.PlateCarree(), facecolor="none",
+                          edgecolor="0.4", linewidth=0.4, zorder=3)
     except Exception:
-        pass
+        import cartopy.feature as cfeature
+        ax.add_feature(cfeature.STATES.with_scale("50m"), edgecolor="0.4", linewidth=0.4)
     ax.set_extent([lons.min(), lons.max(), lats.min(), lats.max()],
                   crs=ccrs.PlateCarree())
     # Clean edge labels only — no criss-cross gridlines across the map.

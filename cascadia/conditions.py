@@ -57,6 +57,8 @@ def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
 
     grid = Grid.from_region(region)
     cells = grid.cells_frame(land_only=True)
+    from .geo import mask_conus
+    cells = mask_conus(cells)   # contiguous-US land only (drops MX/CA/ocean)
     log = (lambda *a: print(*a)) if verbose else (lambda *a: None)
     log(f"{region.name}: {len(cells)} cells @ {res}° ({bbox})")
 

@@ -258,6 +258,13 @@ def build_indicators(
 ) -> pd.DataFrame:
     """Fuse all sources into one per-cell indicator table."""
     cells = grid.cells_frame(land_only=True)
+    try:
+        from ..geo import mask_conus
+        masked = mask_conus(cells)
+        if not masked.empty:
+            cells = masked   # contiguous-US land only
+    except Exception:
+        pass
 
     # --- Seismic: max recent magnitude per cell (for aftershock elevation)
     q = grid.assign(quakes)
