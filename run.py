@@ -134,6 +134,14 @@ def cmd_impact(args: list[str]) -> None:
     _open(Path(out).resolve().as_uri())
 
 
+def cmd_seasonal(args: list[str]) -> None:
+    from cascadia.seasonal import seasonal_outlook
+    print("Building ENSO-driven seasonal hazard outlook (next 1-3 months)…\n")
+    _, out = seasonal_outlook()
+    print(f"\n✓ Seasonal outlook: {out}")
+    _open(Path(out).resolve().as_uri())
+
+
 def cmd_subseasonal(args: list[str]) -> None:
     from cascadia.subseasonal import subseasonal_outlook
     from cascadia.conditions import REGIONS
@@ -156,6 +164,7 @@ COMMANDS = {
     "parcel": cmd_parcel,
     "conditions": cmd_conditions,
     "subseasonal": cmd_subseasonal,
+    "seasonal": cmd_seasonal,
     "impact": cmd_impact,
 }
 

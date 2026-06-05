@@ -47,11 +47,16 @@ HAZARD_CMAPS = {
     "p_smoke": "Greys",
     # sub-seasonal (weeks 2-6) outlook layers
     "fire_outlook": "YlOrRd", "heat_outlook": "hot_r", "drought_outlook": "YlOrBr",
+    # seasonal (1-3 month) ENSO outlook layers
+    "seasonal_fire": "YlOrRd", "seasonal_flood": "Blues", "seasonal_heat": "hot_r",
 }
 HAZARD_TITLES.update({
     "fire_outlook": "Fire potential outlook (wk 2-6)",
     "heat_outlook": "Heat outlook (wk 2-6)",
     "drought_outlook": "Drought / dryness outlook (wk 2-6)",
+    "seasonal_fire": "Fire / drought season outlook",
+    "seasonal_flood": "Wet / flood season outlook",
+    "seasonal_heat": "Warm-season (heat) outlook",
     # exposure & impact layers
     "population": "Population (per cell)",
     "expected_affected": "Expected people affected (any hazard)",
