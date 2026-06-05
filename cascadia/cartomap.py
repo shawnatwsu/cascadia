@@ -127,20 +127,33 @@ def _fmt(v: float, vmax: float) -> str:
     return f"{v:.2f}"
 
 
+# Fixed diverging class edges for anomaly/tendency maps (centred on 0 = normal).
+# Fixed (not auto-scaled) so a weak signal honestly looks weak, not stretched.
+DIVERGING_EDGES = [-0.40, -0.25, -0.12, -0.04, 0.04, 0.12, 0.25, 0.40]
+
+
 def _panel(fig, ax, lons, lats, Z, col, value_label="probability over horizon",
-           boundaries=None):
-    """Draw one hazard panel with a discrete, per-hazard binned colorbar that
-    spans the full subplot width."""
+           boundaries=None, diverging=False):
+    """Draw one hazard panel with a discrete, full-width binned colorbar.
+
+    diverging=True uses a FIXED diverging scale centred on 0 (for anomaly /
+    tendency layers) so weak signals are not exaggerated by auto-scaling."""
     import cartopy.crs as ccrs
     import matplotlib.pyplot as plt
     from matplotlib.colors import BoundaryNorm, ListedColormap
 
     finite = Z[np.isfinite(Z)]
-    vmax = float(np.nanpercentile(finite, 98)) if finite.size else 1.0
-    vmax = max(vmax, 1e-4)
-    edges = _bin_edges(vmax)
-    base = plt.get_cmap(HAZARD_CMAPS.get(col, "YlOrRd"))
-    cmap = ListedColormap(base(np.linspace(0.15, 1.0, len(edges) - 1)))
+    if diverging:
+        edges = np.array(DIVERGING_EDGES)
+        base = plt.get_cmap("RdBu_r")          # blue = below normal, red = above
+        cmap = ListedColormap(base(np.linspace(0.0, 1.0, len(edges) - 1)))
+        vmax = edges[-1]
+    else:
+        vmax = float(np.nanpercentile(finite, 98)) if finite.size else 1.0
+        vmax = max(vmax, 1e-4)
+        edges = _bin_edges(vmax)
+        base = plt.get_cmap(HAZARD_CMAPS.get(col, "YlOrRd"))
+        cmap = ListedColormap(base(np.linspace(0.15, 1.0, len(edges) - 1)))
     norm = BoundaryNorm(edges, cmap.N)
 
     mesh = ax.pcolormesh(lons, lats, Z, cmap=cmap, norm=norm,
@@ -162,7 +175,8 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
                     cols: list[str] | None = None, suptitle: str | None = None,
                     description: str | None = None,
                     value_label: str = "probability over horizon",
-                    provenance: str | None = None, boundaries=None) -> Path:
+                    provenance: str | None = None, boundaries=None,
+                    diverging: bool = False) -> Path:
     """Render the risk surface; each panel gets its own themed, binned colormap
     and a full-width colorbar so every hazard's spatial structure is legible.
 
@@ -197,7 +211,7 @@ def static_risk_map(risk: pd.DataFrame, region_name: str,
     for ax, col in zip(axes, cols):
         lons, lats, Z = _grid(risk, col)
         _panel(fig, ax, lons, lats, Z, col, value_label=value_label,
-               boundaries=boundaries)
+               boundaries=boundaries, diverging=diverging)
     for ax in axes[len(cols):]:
         ax.axis("off")
 

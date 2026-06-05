@@ -80,10 +80,11 @@ def seasonal_outlook(out_path: str | Path = "cascadia_seasonal_map.png",
         sel = cells["cell_id"].isin(ids)
         precip_anom = p_coef * oni        # + = wetter season
         temp_anom = t_coef * oni          # + = warmer season
-        # Hazard tendencies (0.5 = climatological normal).
-        cells.loc[sel, "seasonal_fire"] = np.clip(_sig(1.6 * (temp_anom - precip_anom)), 0, 1)
-        cells.loc[sel, "seasonal_flood"] = np.clip(_sig(1.8 * precip_anom), 0, 1)
-        cells.loc[sel, "seasonal_heat"] = np.clip(_sig(1.8 * temp_anom), 0, 1)
+        # Hazard ANOMALY (0 = climatological normal; +/- = more/less likely than
+        # normal). Kept on the ONI-anomaly scale so a weak ENSO reads as weak.
+        cells.loc[sel, "seasonal_fire"] = np.clip(0.5 * (temp_anom - precip_anom), -0.5, 0.5)
+        cells.loc[sel, "seasonal_flood"] = np.clip(0.6 * precip_anom, -0.5, 0.5)
+        cells.loc[sel, "seasonal_heat"] = np.clip(0.6 * temp_anom, -0.5, 0.5)
 
     log("seasonal tendency means: fire %.2f flood %.2f heat %.2f" % (
         cells["seasonal_fire"].mean(), cells["seasonal_flood"].mean(),
@@ -92,17 +93,20 @@ def seasonal_outlook(out_path: str | Path = "cascadia_seasonal_map.png",
     out = static_risk_map(
         cells, "CONUS", out_path,
         cols=["seasonal_fire", "seasonal_flood", "seasonal_heat"],
-        boundaries=geo.conus_states(), value_label="seasonal tendency (0.5=normal)",
+        boundaries=geo.conus_states(), diverging=True,
+        value_label="anomaly vs normal (0 = normal)",
+        provenance=(f"NOAA CPC Oceanic Nino Index (ONI {oni:+.2f}) x NCA5 regional "
+                    "teleconnection composites · Albers equal-area"),
         suptitle=(f"Cascadia — ENSO seasonal hazard outlook (next 1-3 months)\n"
                   f"{enso.label()} · {enso.season} {enso.year}{lead_note}"),
         description=(
             "IN PLAIN TERMS: El Nino and La Nina tilt the odds of a wet/dry, "
-            "warm/cool season differently in each region. Given the current ocean "
-            "state, this shows where fire/drought, flooding, and heat are MORE (>0.5) "
-            "or LESS (<0.5) likely than a normal season over the next 1-3 months.   |   "
+            "warm/cool season differently in each region. RED = this hazard is MORE "
+            "likely than a normal season; BLUE = LESS likely; WHITE = near normal. "
+            "Right now ENSO is weak, so most regions are near normal (pale).   |   "
             "Method: NOAA ONI (El Nino index) x documented regional teleconnection "
-            "responses (NCA5 regions). A composite baseline; train_enso.py learns "
-            "these responses from 1950-present and scores their skill. Weak ENSO = "
-            "weak signal (near 0.5 everywhere)."))
+            "responses (NCA5 regions) — a composite baseline. NOT YET VALIDATED "
+            "against observed outcomes; train_enso.py learns/scores these responses "
+            "from 1950-present (skill validation in progress)."))
     log(f"Seasonal outlook written: {out}")
     return cells, out
