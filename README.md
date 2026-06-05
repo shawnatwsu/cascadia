@@ -41,7 +41,7 @@ The name is a double meaning: the **Cascadia** bioregion (Pacific Northwest)
 
 ![CONUS impact](docs/impact_conus.png)
 
-**Address‑level report** (`run.ps1 parcel "..."`) — a locator map + per‑hazard levels for any US address. Flood & earthquake are **calibrated probabilities**; the `*` hazards are **relative 0–1 indices** (area‑scale danger, not address‑specific odds). Landslide is refined by the address's **local DEM slope**, so a flat lot reads as stable:
+**Address‑level report** (`run.ps1 parcel "..."`) — a locator map + per‑hazard levels for any US address. Flood & earthquake are **calibrated probabilities**; the `*` hazards are **relative 0–1 indices** (area‑scale danger, not address‑specific odds). Landslide is refined by the address's **local DEM slope** (flat lot → stable), and the weather‑driven hazards carry **error bars** = 10–90% across **31 GFS ensemble members** (real forecast uncertainty):
 
 ![Parcel report](docs/parcel_report.png)
 
@@ -226,6 +226,11 @@ run.py / run.ps1 / run.bat   one-command launcher
 - **Data provenance:** every source, access method, and license is documented in
   [DATA_SOURCES.md](DATA_SOURCES.md). Validation data are static archives, so the
   `run.ps1 skill` results are reproducible.
+- **Model cards:** per‑hazard intended use, method, skill, and limitations in
+  [MODEL_CARDS.md](MODEL_CARDS.md) — including which outputs are *calibrated
+  probabilities* vs *relative indices*.
+- **Uncertainty:** weather‑driven hazards report a 10–90% interval from the
+  31‑member GFS ensemble (forecast uncertainty), not just a point estimate.
 - **Citation:** see [CITATION.cff](CITATION.cff).
 
 ## License

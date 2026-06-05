@@ -60,6 +60,8 @@ class ParcelRisk:
     dominant_chain: str
     co_occurring: str
     hazards: dict[str, float] = field(default_factory=dict)
+    # {hazard: (median, p10, p90)} from the forecast ensemble (weather-driven hazards)
+    uncertainty: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -69,6 +71,8 @@ class ParcelRisk:
             "dominant_chain": self.dominant_chain,
             "co_occurring": self.co_occurring,
             "hazards": {k: round(v, 4) for k, v in self.hazards.items()},
+            "uncertainty_p10_p90": {k: [round(v[1], 4), round(v[2], 4)]
+                                    for k, v in self.uncertainty.items()},
         }
 
 
@@ -91,15 +95,28 @@ def assess_point(lat: float, lon: float, config: Config | None = None,
 
     # Refine landslide with the ACTUAL local slope at the address (a ~250 m DEM
     # stencil), instead of the ~5 km cell average — so a flat lot reads as stable.
+    feats = res.features
+    frow = feats[feats["cell_id"] == row["cell_id"]].iloc[0].copy()
     try:
         from .sources.elevation import point_slope
         from .models.predictors import _p_landslide
-        feats = res.features
-        frow = feats[feats["cell_id"] == row["cell_id"]].iloc[0].copy()
         slope = point_slope(lat, lon)
         if np.isfinite(slope):
             frow["slope_deg"] = slope
             hazards["landslide"] = float(_p_landslide(pd.DataFrame([frow]))[0])
+    except Exception:
+        pass
+
+    # Forecast-ensemble uncertainty for the weather-driven hazards (31 members).
+    # Use the ensemble MEDIAN as the point value so it is consistent with its
+    # interval and reflects the 7-day forecast (not the nowcast).
+    uncertainty = {}
+    try:
+        from .sources.ensemble import hazard_uncertainty
+        uncertainty = hazard_uncertainty(frow, lat, lon)
+        for h, (med, _, _) in uncertainty.items():
+            if h in hazards:
+                hazards[h] = med
     except Exception:
         pass
 
@@ -112,7 +129,7 @@ def assess_point(lat: float, lon: float, config: Config | None = None,
         compound_risk=compound, expected_hazards=expected,
         dominant_chain=str(row.get("dominant_chain", "")),
         co_occurring=str(row.get("co_occurring", "")),
-        hazards=hazards,
+        hazards=hazards, uncertainty=uncertainty,
     )
 
 
@@ -177,10 +194,23 @@ def parcel_report(address: str, out_path: str | Path = "cascadia_parcel_map.png"
     vals = [v for _, v in order]
     colors = [plt.get_cmap(HAZARD_CMAPS.get(f"p_{k}", "YlOrRd"))(0.7) for k, _ in order]
     bars = ax2.barh(names, vals, color=colors, edgecolor="0.3")
+    # 10-90% forecast-ensemble interval for the weather-driven hazards.
+    xerr_lo, xerr_hi, has_err = [], [], False
+    for k, v in order:
+        if k in pr.uncertainty:
+            _, p10, p90 = pr.uncertainty[k]
+            xerr_lo.append(max(0.0, v - p10)); xerr_hi.append(max(0.0, p90 - v)); has_err = True
+        else:
+            xerr_lo.append(0.0); xerr_hi.append(0.0)
+    if has_err:
+        ax2.errorbar(vals, range(len(vals)), xerr=[xerr_lo, xerr_hi], fmt="none",
+                     ecolor="0.25", elinewidth=1.3, capsize=3, zorder=5)
     for b, v in zip(bars, vals):
-        ax2.text(v + 0.01, b.get_y() + b.get_height() / 2, f"{v:.2f}",
+        ax2.text(v + 0.012, b.get_y() + b.get_height() / 2, f"{v:.2f}",
                  va="center", fontsize=9)
-    ax2.set_xlim(0, max(0.3, max(vals) * 1.25))
+    top = max(0.3, max(vals) * 1.25, max(pr.uncertainty.get(k, (0, 0, 0))[2]
+                                         for k, _ in order) * 1.1 if pr.uncertainty else 0.3)
+    ax2.set_xlim(0, top)
     ax2.set_xlabel("calibrated probability  |  * = relative hazard index (0-1)")
     ax2.set_title("Hazard level at this address (next 7 days)", fontsize=11, weight="bold")
     ax2.grid(axis="x", alpha=0.3)
@@ -192,7 +222,8 @@ def parcel_report(address: str, out_path: str | Path = "cascadia_parcel_map.png"
     fig.text(0.5, 0.005,
              "flood & earthquake are calibrated probabilities; * landslide / wildfire / "
              "heat / smoke are relative 0-1 indices (area-scale danger, not address-"
-             "specific odds). Landslide uses the address's local DEM slope. "
+             "specific odds). Error bars = 10-90% range across 31 GFS ensemble members "
+             "(forecast uncertainty). Landslide uses the address's local DEM slope. "
              "Research prototype — defer to official sources.",
              ha="center", fontsize=7.5, color="0.45", wrap=True)
     fig.tight_layout(rect=[0, 0.03, 1, 0.93])
