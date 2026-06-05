@@ -105,8 +105,11 @@ def seasonal_outlook(out_path: str | Path = "cascadia_seasonal_map.png",
             "likely than a normal season; BLUE = LESS likely; WHITE = near normal. "
             "Right now ENSO is weak, so most regions are near normal (pale).   |   "
             "Method: NOAA ONI (El Nino index) x documented regional teleconnection "
-            "responses (NCA5 regions) — a composite baseline. NOT YET VALIDATED "
-            "against observed outcomes; train_enso.py learns/scores these responses "
-            "from 1950-present (skill validation in progress)."))
+            "responses (NCA5 regions) — a composite baseline.   |   VALIDATED vs "
+            "NCEI observed climate (run.py skill): ENSO correlates moderately with "
+            "regional seasonal climate where expected (SE/S.Plains winter precip "
+            "r~0.4) but has near-zero out-of-sample tercile skill over climatology "
+            "for most regions. Treat as a weak guide, strongest for winter in the "
+            "South. The ENSO forecast itself (ONI) beats persistence by ~30%."))
     log(f"Seasonal outlook written: {out}")
     return cells, out

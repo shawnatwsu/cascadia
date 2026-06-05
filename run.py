@@ -144,6 +144,24 @@ def cmd_impact(args: list[str]) -> None:
     _announce(out)
 
 
+def cmd_skill(args: list[str]) -> None:
+    """Calibration & skill validation — the peer-review verification suite."""
+    print("=== Cascadia skill & calibration validation ===\n")
+    print("[1/3] ENSO -> regional climate teleconnection (vs NCEI observed)…")
+    from cascadia.skill_enso import validate_enso
+    validate_enso(out_path=_outfile("skill_enso_teleconnection.png"))
+    print(f"  -> {_outfile('skill_enso_teleconnection.png')}\n")
+    print("[2/3] Flood model calibration (out-of-fold reliability)…")
+    from cascadia.skill_models import validate_flood, validate_enso_forecast
+    validate_flood(out_path=_outfile("skill_flood_reliability.png"), verbose=True)
+    print(f"  -> {_outfile('skill_flood_reliability.png')}\n")
+    print("[3/3] ENSO (ONI) forecast skill…")
+    validate_enso_forecast(out_path=_outfile("skill_enso_forecast.png"), verbose=True)
+    print(f"  -> {_outfile('skill_enso_forecast.png')}")
+    print(f"\n✓ Skill figures saved in: {OUTPUT_DIR.resolve()}")
+    _open(OUTPUT_DIR.resolve().as_uri())
+
+
 def cmd_seasonal(args: list[str]) -> None:
     from cascadia.seasonal import seasonal_outlook
     lead = int(args[0]) if args and args[0].isdigit() else 0
@@ -177,6 +195,7 @@ COMMANDS = {
     "subseasonal": cmd_subseasonal,
     "seasonal": cmd_seasonal,
     "impact": cmd_impact,
+    "skill": cmd_skill,
 }
 
 
