@@ -9,7 +9,7 @@ data/
 *.log
 *_risk_map.html
 # generated map images (run outputs)
-cascadia_*map*.png
+cascadia_*.png
 
 # Editor / OS
 .vscode/
