@@ -38,7 +38,7 @@ The name is a double meaning: the **Cascadia** bioregion (Pacific Northwest)
 
 ![CONUS impact](docs/impact_conus.png)
 
-**Address‑level report** (`run.ps1 parcel "..."`) — a locator map + per‑hazard probabilities for any US address:
+**Address‑level report** (`run.ps1 parcel "..."`) — a locator map + per‑hazard levels for any US address. Flood & earthquake are **calibrated probabilities**; the `*` hazards are **relative 0–1 indices** (area‑scale danger, not address‑specific odds). Landslide is refined by the address's **local DEM slope**, so a flat lot reads as stable:
 
 ![Parcel report](docs/parcel_report.png)
 
@@ -197,7 +197,8 @@ run.py / run.ps1 / run.bat   one-command launcher
 ## Honest limitations
 
 - **Research prototype.** Not validated for operational use; defer to official agencies.
-- Only **flood** is a fully label‑validated ML model; other hazards are physically‑grounded priors/indices (clean national labels are scarce).
+- **Calibrated vs. index:** only **flood** (and the **earthquake** seismic prior) are calibrated probabilities. **Landslide / wildfire / heat / smoke are relative 0–1 hazard indices** — area‑scale danger, *not* calibrated odds of occurrence. Reports flag them with `*`.
+- Maps are **~4–5 km cells**; the parcel report refines landslide with a local DEM slope, but other hazards remain area‑scale.
 - The **seasonal outlook** has near‑zero out‑of‑sample probabilistic skill (ENSO is a weak US predictor) — it's a labeled weak guide.
 - GRIDMET/Census are **US‑only**; live forecasting is point‑sampled (region size is bounded by API limits).
 

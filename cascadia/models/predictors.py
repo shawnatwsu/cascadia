@@ -20,6 +20,20 @@ import pandas as pd
 
 HAZARDS = ["earthquake", "landslide", "flood", "wildfire", "heat", "smoke"]
 
+# How honestly each leaf's number can be read. "probability" = a calibrated or
+# physically-derived probability; "index" = a relative 0-1 hazard score (NOT a
+# calibrated probability of occurrence). Surfaced in reports so users don't
+# over-read the index hazards.
+HAZARD_KIND = {
+    "flood": "probability",        # trained model, isotonic-calibrated (validated)
+    "earthquake": "probability",   # smoothed-seismicity Poisson prior
+    "landslide": "index",          # inventory susceptibility x slope x rain trigger
+    "wildfire": "index",           # GRIDMET fire-weather danger
+    "heat": "index",               # heat-index / wet-bulb
+    "smoke": "index",              # downwind plume transport
+}
+CALIBRATED = {h for h, k in HAZARD_KIND.items() if k == "probability"}
+
 
 def _sigmoid(x: np.ndarray | float) -> np.ndarray | float:
     return 1.0 / (1.0 + np.exp(-x))
@@ -65,6 +79,11 @@ def _p_landslide(f: pd.DataFrame) -> np.ndarray:
     sat = _saturation(f["soil_moist_peak"].to_numpy())
     trigger = _sigmoid(0.05 * (precip - 40.0) + 2.5 * (sat - 0.6))
     suscept = f["ls_susceptibility"].to_numpy() if "ls_susceptibility" in f else 0.5
+    # Slope gate: landslides need a slope. A flat lot in a slide-prone region
+    # (high inventory density) is still stable. Falls back to 1.0 if no DEM.
+    if "slope_deg" in f:
+        from ..sources.elevation import slope_factor
+        suscept = suscept * slope_factor(f["slope_deg"].to_numpy())
     return np.clip(suscept * trigger, 1e-4, 0.999)
 
 

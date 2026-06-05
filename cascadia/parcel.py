@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from .config import Config
@@ -82,14 +83,33 @@ def assess_point(lat: float, lon: float, config: Config | None = None,
     res = run_pipeline(cfg, verbose=False)
     risk = res.risk
     d2 = (risk["lat"] - lat) ** 2 + (risk["lon"] - lon) ** 2
-    row = risk.loc[d2.idxmin()]
+    idx = d2.idxmin()
+    row = risk.loc[idx]
     hazards = {h: float(row[f"p_{h}"]) for h in
                ["earthquake", "landslide", "flood", "wildfire", "heat", "smoke"]
                if f"p_{h}" in row}
+
+    # Refine landslide with the ACTUAL local slope at the address (a ~250 m DEM
+    # stencil), instead of the ~5 km cell average — so a flat lot reads as stable.
+    try:
+        from .sources.elevation import point_slope
+        from .models.predictors import _p_landslide
+        feats = res.features
+        frow = feats[feats["cell_id"] == row["cell_id"]].iloc[0].copy()
+        slope = point_slope(lat, lon)
+        if np.isfinite(slope):
+            frow["slope_deg"] = slope
+            hazards["landslide"] = float(_p_landslide(pd.DataFrame([frow]))[0])
+    except Exception:
+        pass
+
+    # Recompute compound metrics from the (refined) per-hazard probabilities.
+    ps = np.array(list(hazards.values()))
+    compound = float(1 - np.prod(1 - ps))
+    expected = float(ps.sum())
     return ParcelRisk(
         lat=lat, lon=lon, address=address,
-        compound_risk=float(row["compound_risk"]),
-        expected_hazards=float(row["expected_hazards"]),
+        compound_risk=compound, expected_hazards=expected,
         dominant_chain=str(row.get("dominant_chain", "")),
         co_occurring=str(row.get("co_occurring", "")),
         hazards=hazards,
@@ -148,10 +168,12 @@ def parcel_report(address: str, out_path: str | Path = "cascadia_parcel_map.png"
                       shrink=1.0, fraction=0.06, pad=0.05, ticks=edges)
     cb.set_ticklabels([_fmt(e, vmax) for e in edges]); cb.set_label("expected # of hazards")
 
-    # Bar chart of this parcel's per-hazard probabilities.
+    # Bar chart of this parcel's per-hazard scores, flagging calibrated vs index.
+    from .models.predictors import CALIBRATED
     ax2 = fig.add_subplot(1, 2, 2)
     order = sorted(pr.hazards.items(), key=lambda kv: kv[1])
-    names = [HAZARD_TITLES.get(f"p_{k}", k) for k, _ in order]
+    names = [HAZARD_TITLES.get(f"p_{k}", k) + ("" if k in CALIBRATED else " *")
+             for k, _ in order]
     vals = [v for _, v in order]
     colors = [plt.get_cmap(HAZARD_CMAPS.get(f"p_{k}", "YlOrRd"))(0.7) for k, _ in order]
     bars = ax2.barh(names, vals, color=colors, edgecolor="0.3")
@@ -159,14 +181,20 @@ def parcel_report(address: str, out_path: str | Path = "cascadia_parcel_map.png"
         ax2.text(v + 0.01, b.get_y() + b.get_height() / 2, f"{v:.2f}",
                  va="center", fontsize=9)
     ax2.set_xlim(0, max(0.3, max(vals) * 1.25))
-    ax2.set_xlabel("probability over next 7 days")
-    ax2.set_title("Hazard probabilities at this address", fontsize=11, weight="bold")
+    ax2.set_xlabel("calibrated probability  |  * = relative hazard index (0-1)")
+    ax2.set_title("Hazard level at this address (next 7 days)", fontsize=11, weight="bold")
     ax2.grid(axis="x", alpha=0.3)
 
     fig.suptitle(f"Cascadia parcel hazard report\n{pr.address}", fontsize=13, weight="bold")
-    fig.text(0.5, 0.005, f"Compound risk (any hazard): {pr.compound_risk:.2f}  ·  "
-             f"expected # hazards: {pr.expected_hazards:.2f}  ·  "
-             f"dominant cascade: {pr.dominant_chain or '—'}", ha="center", fontsize=9, color="0.3")
+    fig.text(0.5, 0.05, f"Combined: {pr.compound_risk:.2f}  ·  expected # hazards: "
+             f"{pr.expected_hazards:.2f}  ·  dominant cascade: {pr.dominant_chain or '—'}",
+             ha="center", fontsize=9, color="0.3")
+    fig.text(0.5, 0.005,
+             "flood & earthquake are calibrated probabilities; * landslide / wildfire / "
+             "heat / smoke are relative 0-1 indices (area-scale danger, not address-"
+             "specific odds). Landslide uses the address's local DEM slope. "
+             "Research prototype — defer to official sources.",
+             ha="center", fontsize=7.5, color="0.45", wrap=True)
     fig.tight_layout(rect=[0, 0.03, 1, 0.93])
     out_path = Path(out_path)
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
@@ -185,6 +213,13 @@ def assess_address(address: str, config: Config | None = None) -> dict:
                 "error": "address could not be geocoded"}
     pr = assess_point(g.lat, g.lon, config=config, state=g.state,
                       address=g.matched_address)
+    from .models.predictors import HAZARD_KIND
     out = pr.to_dict()
     out["matched"] = True
+    out["hazard_kind"] = {h: HAZARD_KIND.get(h, "index") for h in pr.hazards}
+    out["note"] = (
+        "flood & earthquake are calibrated probabilities; landslide/wildfire/heat/"
+        "smoke are relative 0-1 hazard indices (area-scale danger, ~5km, not "
+        "address-specific odds). Landslide is refined by the address's local DEM "
+        "slope. Research prototype — not for operational decisions.")
     return out

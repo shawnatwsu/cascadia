@@ -254,6 +254,7 @@ def build_indicators(
     catalog: pd.DataFrame | None = None,
     inventory: pd.DataFrame | None = None,
     gridmet_cube=None,
+    cache_dir=None,
     horizon_days: int = 7,
 ) -> pd.DataFrame:
     """Fuse all sources into one per-cell indicator table."""
@@ -285,6 +286,14 @@ def build_indicators(
 
     # --- Landslide susceptibility prior (smoothed USGS inventory density).
     cells["ls_susceptibility"] = _landslide_susceptibility(cells, inventory)
+
+    # --- Terrain slope (DEM) so flat ground is correctly stable.
+    if cache_dir is not None:
+        try:
+            from ..sources.elevation import cell_slopes
+            cells["slope_deg"] = cell_slopes(cells, cache_dir, grid.res)
+        except Exception:
+            pass
 
     # --- GRIDMET 4km fire/heat variables (burning index, ERC, fuel moisture,
     #     VPD, heat index, wet-bulb), sampled to cells. Optional.

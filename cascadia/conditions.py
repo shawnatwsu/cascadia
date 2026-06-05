@@ -134,6 +134,11 @@ def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
     cells["quake_mag"] = 0.0   # no per-cell aftershock layer in the broad nowcast
     inv = LandslideInventory(cfg).fetch()
     cells["ls_susceptibility"] = _landslide_susceptibility(cells, inv)
+    try:
+        from .sources.elevation import cell_slopes
+        cells["slope_deg"] = cell_slopes(cells, cfg.cache_dir, res)
+    except Exception:
+        pass
     log(f"priors: {len(cat)} quakes, {len(inv)} landslides")
 
     # --- observed fire + downwind smoke transport ------------------------

@@ -102,6 +102,7 @@ def run_pipeline(config: Config | None = None, verbose: bool = True) -> Pipeline
         catalog=raw["catalog"],
         inventory=raw["inventory"],
         gridmet_cube=gridmet_cube,
+        cache_dir=config.cache_dir,
         horizon_days=config.horizon_days,
     )
     log(f"   {len(features)} cells x {features.shape[1]} features")
