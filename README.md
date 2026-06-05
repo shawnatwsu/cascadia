@@ -50,7 +50,7 @@ The name is a double meaning: the **Cascadia** bioregion (Pacific Northwest)
 
 ![ENSO teleconnection skill](docs/enso_skill.png)
 
-**The cascade *adds skill*** (`run.ps1 skill`) — validated against EPA‑measured PM2.5 in the Sept 2020 smoke episode: modeling the fire→smoke **downwind transport** (the cascade) beats fire **proximity** (treating smoke as independent). This is the first direct test of the project's central claim:
+**The cascade *adds skill* — significantly** (`run.ps1 skill`) — validated against EPA‑measured PM2.5 across **4 smoke episodes** (2018–2023, West + cross‑border Canadian smoke; n = 1,131 monitor‑days). Modeling the fire→smoke **downwind transport** (the cascade) ~doubles the correlation vs fire **proximity** (treating smoke as independent): Δr = +0.063, **95% bootstrap CI [+0.008, +0.117]** (excludes zero). Direct evidence for the project's central claim:
 
 ![Fire→smoke cascade validation](docs/cascade_skill.png)
 

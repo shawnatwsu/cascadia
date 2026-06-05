@@ -1,18 +1,15 @@
-"""Validate the fire -> smoke CASCADE against observed air quality.
+"""Validate the fire -> smoke CASCADE against observed air quality (multi-event).
 
 The core novel claim of Cascadia is that modeling hazard *interactions* helps.
-The most directly testable edge is fire -> smoke. We compare two ways to predict
-observed PM2.5 from active fires:
+The most directly testable edge is fire -> smoke. For several major smoke
+episodes we compare two ways to predict observed PM2.5 from active fires:
 
   * PROXIMITY (independent / no cascade): smoke ~ how much fire is nearby.
-  * TRANSPORT (the cascade): smoke ~ fire carried DOWNWIND toward the monitor,
-    using wind direction.
+  * TRANSPORT (the cascade): fire carried DOWNWIND toward the monitor (wind).
 
-If the wind-aware transport model correlates better with measured PM2.5 than
-proximity alone, the fire -> smoke cascade demonstrably *adds skill* — the
-paper's central result, tested against EPA ground truth.
-
-Default event: the September 2020 West-Coast wildfire smoke episode.
+We pool the monitor-days across events and test whether transport correlates
+better with measured PM2.5 than proximity — with a BOOTSTRAP confidence interval
+on the skill gain so it is not a one-event fluke. Ground truth: EPA AQS PM2.5.
 """
 from __future__ import annotations
 
@@ -23,39 +20,49 @@ import pandas as pd
 
 from .config import Config
 
+# Major smoke episodes (geographically + temporally diverse). bbox covers both
+# the fires and the downwind monitors (incl. cross-border Canadian smoke in 2023).
+EVENTS = [
+    {"name": "CA Camp Fire (Nov 2018)", "year": 2018,
+     "start": "2018-11-08", "end": "2018-11-20", "bbox": (-124.0, 35.0, -118.0, 42.0)},
+    {"name": "West Coast (Sep 2020)", "year": 2020,
+     "start": "2020-09-07", "end": "2020-09-20", "bbox": (-125.0, 37.0, -116.0, 49.0)},
+    {"name": "Western US (Jul-Aug 2021)", "year": 2021,
+     "start": "2021-07-15", "end": "2021-08-20", "bbox": (-125.0, 37.0, -116.0, 49.0)},
+    {"name": "Canadian smoke, East (Jun 2023)", "year": 2023,
+     "start": "2023-06-04", "end": "2023-06-12", "bbox": (-82.0, 38.0, -67.0, 52.0)},
+]
 
-def validate_fire_smoke_cascade(
-    out_path: str | Path = "cascadia_cascade_skill.png",
-    year: int = 2020, start: str = "2020-09-07", end: str = "2020-09-20",
-    bbox: tuple[float, float, float, float] = (-125.0, 37.0, -116.0, 49.0),
-    radius_km: float = 800.0, scale_km: float = 250.0, verbose: bool = True):
-    from scipy.spatial import cKDTree
+
+def _spearman(a, b) -> float:
     from scipy.stats import spearmanr
+    return float(spearmanr(a, b).correlation)
+
+
+def _event_pairs(ev: dict, cfg: Config, radius_km=800.0, scale_km=250.0,
+                 verbose=True) -> pd.DataFrame:
+    """Per monitor-day: proximity & transport indices + observed PM2.5."""
+    from scipy.spatial import cKDTree
     from .sources.airquality import aqs_window
     from .sources.gridmet import region_daily
     from .training.dataset_fire import fetch_fire_detections
-
-    cfg = Config.load()
     log = (lambda *a: print(*a)) if verbose else (lambda *a: None)
 
-    obs = aqs_window(year, start, end, bbox, cfg.cache_dir)
-    log(f"observed PM2.5 monitor-days: {len(obs)} (max {obs['pm25'].max():.0f} ug/m3)")
-    fcfg = cfg.with_region(bbox)
-    fires = fetch_fire_detections(fcfg, start, end, season=(1, 12), verbose=False)
-    log(f"FIRMS fire detections: {len(fires)}")
-    cube = region_daily(bbox, start, end, cfg.cache_dir, variables=["wind_dir"],
-                        stride=2, verbose=False)
+    obs = aqs_window(ev["year"], ev["start"], ev["end"], ev["bbox"], cfg.cache_dir)
+    fires = fetch_fire_detections(cfg.with_region(ev["bbox"]), ev["start"], ev["end"],
+                                  season=(1, 12), verbose=False)
     if obs.empty or fires.empty:
-        raise RuntimeError("no observations or fires in window (need FIRMS_MAP_KEY)")
+        log(f"  {ev['name']}: no data (monitors={len(obs)}, fires={len(fires)})")
+        return pd.DataFrame()
+    cube = region_daily(ev["bbox"], ev["start"], ev["end"], cfg.cache_dir,
+                        variables=["wind_dir"], stride=2, verbose=False)
 
-    # planar km coords
     lat0 = float(obs["lat"].mean()); kx = 111.0 * np.cos(np.radians(lat0))
     fxy = np.column_stack([fires["lon"].to_numpy() * kx, fires["lat"].to_numpy() * 111.0])
     fdate = pd.to_datetime(fires["date"]).to_numpy()
-    tree = cKDTree(fxy)
-    wd = cube["wind_dir"]
+    tree = cKDTree(fxy); wd = cube["wind_dir"]
 
-    prox, trans, pm = [], [], []
+    rows = []
     for _, r in obs.iterrows():
         sx, sy = r["lon"] * kx, r["lat"] * 111.0
         idx = tree.query_ball_point([sx, sy], radius_km)
@@ -63,61 +70,94 @@ def validate_fire_smoke_cascade(
             continue
         d = fxy[idx] - [sx, sy]
         dist = np.hypot(d[:, 0], d[:, 1]) + 1e-6
-        # only fires active within +/-1 day of the observation
-        dday = np.abs((fdate[idx] - np.datetime64(r["date"])) / np.timedelta64(1, "D"))
-        w_time = dday <= 1.0
-        if not w_time.any():
+        recent = np.abs((fdate[idx] - np.datetime64(r["date"])) / np.timedelta64(1, "D")) <= 1.0
+        if not recent.any():
             continue
-        decay = np.exp(-dist / scale_km) * w_time
-        # wind direction at the monitor that day (deg the wind blows FROM)
+        decay = np.exp(-dist / scale_km) * recent
         try:
             th = float(wd.sel(lat=r["lat"], lon=r["lon"], method="nearest")
                        .sel(time=np.datetime64(r["date"]), method="nearest"))
         except Exception:
             th = np.nan
-        bearing = np.degrees(np.arctan2(d[:, 0], d[:, 1]))   # monitor -> fire
+        bearing = np.degrees(np.arctan2(d[:, 0], d[:, 1]))
         align = np.clip(np.cos(np.radians(bearing - th)), 0, 1) if np.isfinite(th) else 1.0
-        prox.append(float(decay.sum()))
-        trans.append(float((decay * align).sum()))
-        pm.append(float(r["pm25"]))
-
-    df = pd.DataFrame({"proximity": prox, "transport": trans, "pm25": pm})
-    df = df[(df["proximity"] > 0)].reset_index(drop=True)
-    r_prox = spearmanr(df["proximity"], df["pm25"]).correlation
-    r_trans = spearmanr(df["transport"], df["pm25"]).correlation
-    result = {"n": len(df), "r_proximity": float(r_prox), "r_transport": float(r_trans),
-              "skill_gain": float(r_trans - r_prox)}
-    log(f"\n=== fire->smoke CASCADE validation (n={result['n']} monitor-days) ===")
-    log(f"  PROXIMITY (independent)  : Spearman r = {r_prox:+.3f}")
-    log(f"  TRANSPORT (cascade)      : Spearman r = {r_trans:+.3f}")
-    log(f"  -> cascade skill gain    : {result['skill_gain']:+.3f}  "
-        f"({'cascade ADDS skill' if result['skill_gain'] > 0 else 'no gain'})")
-    _render(df, result, start, end, out_path)
-    return result
+        rows.append((float(decay.sum()), float((decay * align).sum()),
+                     float(r["pm25"]), ev["name"]))
+    df = pd.DataFrame(rows, columns=["proximity", "transport", "pm25", "event"])
+    log(f"  {ev['name']}: {len(df)} monitor-days, {len(fires)} fires")
+    return df
 
 
-def _render(df, res, start, end, out_path):
+def validate_fire_smoke_cascade(out_path: str | Path = "cascadia_cascade_skill.png",
+                                events: list | None = None, n_boot: int = 3000,
+                                verbose: bool = True):
+    cfg = Config.load()
+    log = (lambda *a: print(*a)) if verbose else (lambda *a: None)
+    log("Pooling fire->smoke monitor-days across major smoke episodes…")
+    parts = [_event_pairs(ev, cfg, verbose=verbose) for ev in (events or EVENTS)]
+    df = pd.concat([p for p in parts if not p.empty], ignore_index=True)
+    df = df[df["proximity"] > 0].reset_index(drop=True)
+
+    r_prox, r_trans = _spearman(df["proximity"], df["pm25"]), _spearman(df["transport"], df["pm25"])
+    # bootstrap the skill gain delta-r
+    rng = np.random.default_rng(0)
+    deltas = np.empty(n_boot)
+    n = len(df)
+    for b in range(n_boot):
+        s = rng.integers(0, n, n)
+        sub = df.iloc[s]
+        deltas[b] = _spearman(sub["transport"], sub["pm25"]) - _spearman(sub["proximity"], sub["pm25"])
+    lo, hi = np.percentile(deltas, [2.5, 97.5])
+    p_gt0 = float((deltas > 0).mean())
+    res = {"n": n, "n_events": df["event"].nunique(),
+           "r_proximity": r_prox, "r_transport": r_trans,
+           "skill_gain": r_trans - r_prox, "ci95": [float(lo), float(hi)],
+           "frac_boot_positive": p_gt0}
+    log(f"\n=== fire->smoke CASCADE — pooled over {res['n_events']} events, n={n} ===")
+    log(f"  PROXIMITY (independent): Spearman r = {r_prox:+.3f}")
+    log(f"  TRANSPORT (cascade)    : Spearman r = {r_trans:+.3f}")
+    log(f"  skill gain delta-r     : {res['skill_gain']:+.3f}  "
+        f"95% CI [{lo:+.3f}, {hi:+.3f}]  ({p_gt0:.1%} of bootstraps > 0)")
+    log(f"  -> {'SIGNIFICANT: cascade adds skill' if lo > 0 else 'not significant'}")
+    _render(df, res, deltas, out_path)
+    return res
+
+
+def _render(df, res, deltas, out_path):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5), constrained_layout=True)
+    events = sorted(df["event"].unique())
+    colors = plt.get_cmap("tab10")(np.linspace(0, 1, len(events)))
+    cmap = dict(zip(events, colors))
     for ax, col, title, r in (
             (axes[0], "proximity", "Independent: fire PROXIMITY", res["r_proximity"]),
             (axes[1], "transport", "Cascade: downwind TRANSPORT", res["r_transport"])):
-        ax.scatter(df[col], df["pm25"], s=8, alpha=0.3, color="#444")
-        ax.set_yscale("log"); ax.set_xlabel(f"{col} index"); ax.set_ylabel("observed PM2.5 (ug/m3)")
+        for ev in events:
+            d = df[df["event"] == ev]
+            ax.scatter(d[col], d["pm25"], s=9, alpha=0.4, color=cmap[ev], label=ev)
+        ax.set_yscale("log"); ax.set_xlabel(f"{col} index")
+        ax.set_ylabel("observed PM2.5 (ug/m3)")
         ax.set_title(f"{title}\nSpearman r = {r:+.3f}", fontsize=11, weight="bold")
         ax.grid(alpha=0.3)
-    verdict = ("Cascade ADDS skill" if res["skill_gain"] > 0 else "No cascade gain")
-    fig.suptitle(f"Cascadia — fire→smoke cascade validation vs EPA observed PM2.5 "
-                 f"({start}…{end})\n{verdict}: transport beats proximity by "
-                 f"Δr = {res['skill_gain']:+.3f}  (n={res['n']} monitor-days)",
-                 fontsize=12, weight="bold")
-    fig.text(0.5, -0.04, "Each point is a monitor-day. PROXIMITY = fire weighted by "
-             "distance only (treats smoke as independent of wind). TRANSPORT = the "
-             "same fires weighted by whether they lie UPWIND of the monitor (the "
-             "fire→smoke cascade). Higher correlation with measured PM2.5 = more "
-             "skill. Ground truth: EPA AQS 24h PM2.5.", ha="center", va="top",
-             fontsize=8.5, color="0.3", wrap=True)
+    axes[0].legend(fontsize=7, loc="lower right")
+    ax = axes[2]
+    ax.hist(deltas, bins=40, color="#2c7fb8", alpha=0.8)
+    ax.axvline(0, color="k", ls="--", lw=1)
+    ax.axvline(res["skill_gain"], color="#d62728", lw=2, label="observed Δr")
+    lo, hi = res["ci95"]
+    ax.axvspan(lo, hi, color="#2c7fb8", alpha=0.15, label="95% CI")
+    ax.set_xlabel("skill gain  Δr  (transport − proximity)")
+    ax.set_ylabel("bootstrap count")
+    ax.set_title(f"Skill gain: {res['skill_gain']:+.3f}\n95% CI [{lo:+.3f}, {hi:+.3f}]",
+                 fontsize=11, weight="bold")
+    ax.legend(fontsize=9)
+    sig = "SIGNIFICANT — cascade adds skill" if lo > 0 else "not significant"
+    fig.suptitle(f"Cascadia — fire→smoke cascade vs EPA observed PM2.5  "
+                 f"({res['n_events']} smoke episodes, n={res['n']} monitor-days)\n"
+                 f"{sig}: downwind transport beats proximity, Δr={res['skill_gain']:+.3f} "
+                 f"(bootstrap {res['frac_boot_positive']:.0%} > 0)",
+                 fontsize=12.5, weight="bold")
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close(fig)
