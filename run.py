@@ -155,9 +155,16 @@ def cmd_skill(args: list[str]) -> None:
     from cascadia.skill_models import validate_flood, validate_enso_forecast
     validate_flood(out_path=_outfile("skill_flood_reliability.png"), verbose=True)
     print(f"  -> {_outfile('skill_flood_reliability.png')}\n")
-    print("[3/3] ENSO (ONI) forecast skill…")
+    print("[3/4] ENSO (ONI) forecast skill…")
     validate_enso_forecast(out_path=_outfile("skill_enso_forecast.png"), verbose=True)
-    print(f"  -> {_outfile('skill_enso_forecast.png')}")
+    print(f"  -> {_outfile('skill_enso_forecast.png')}\n")
+    print("[4/4] Fire→smoke CASCADE vs observed PM2.5 (does the cascade add skill?)…")
+    try:
+        from cascadia.skill_cascade import validate_fire_smoke_cascade
+        validate_fire_smoke_cascade(out_path=_outfile("skill_cascade.png"), verbose=True)
+        print(f"  -> {_outfile('skill_cascade.png')}")
+    except Exception as e:
+        print(f"  (skipped: {e} — needs FIRMS_MAP_KEY)")
     print(f"\n✓ Skill figures saved in: {OUTPUT_DIR.resolve()}")
     _open(OUTPUT_DIR.resolve().as_uri())
 
