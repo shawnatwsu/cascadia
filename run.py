@@ -136,8 +136,10 @@ def cmd_impact(args: list[str]) -> None:
 
 def cmd_seasonal(args: list[str]) -> None:
     from cascadia.seasonal import seasonal_outlook
-    print("Building ENSO-driven seasonal hazard outlook (next 1-3 months)…\n")
-    _, out = seasonal_outlook()
+    lead = int(args[0]) if args and args[0].isdigit() else 0
+    msg = (f"using the {lead}-month ENSO forecast" if lead else "using the current ENSO state")
+    print(f"Building ENSO-driven seasonal hazard outlook ({msg})…\n")
+    _, out = seasonal_outlook(lead=lead)
     print(f"\n✓ Seasonal outlook: {out}")
     _open(Path(out).resolve().as_uri())
 

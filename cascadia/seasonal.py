@@ -39,16 +39,31 @@ def _sig(x):
 
 
 def seasonal_outlook(out_path: str | Path = "cascadia_seasonal_map.png",
-                     oni_override: float | None = None, verbose: bool = True):
-    """Render the ENSO-driven seasonal hazard outlook over CONUS by NCA region."""
+                     oni_override: float | None = None, lead: int = 0,
+                     verbose: bool = True):
+    """Render the ENSO-driven seasonal hazard outlook over CONUS by NCA region.
+
+    lead=0 uses the current ONI; lead=1/2/3 uses the trained ENSO forecast model's
+    predicted ONI that many months ahead (a genuinely forward-looking outlook).
+    """
     from . import geo
     from .sources.enso import current_state
     from .cartomap import static_risk_map
 
     cfg = Config.load()
     enso = current_state(cfg)
-    oni = oni_override if oni_override is not None else enso.oni
     log = (lambda *a: print(*a)) if verbose else (lambda *a: None)
+    lead_note = ""
+    if oni_override is not None:
+        oni = oni_override
+    elif lead > 0:
+        from .training.train_enso import forecast
+        fc = forecast(cfg)
+        oni = fc.get(lead, enso.oni) if fc else enso.oni
+        lead_note = f"  ·  {lead}-month ENSO forecast"
+        log(f"ENSO {lead}-month forecast ONI {oni:+.2f} (current {enso.oni:+.2f})")
+    else:
+        oni = enso.oni
     log(f"ENSO: {enso.label()} | season {enso.season} {enso.year} | using ONI {oni:+.2f}")
 
     region = Region(name="CONUS seasonal", bbox=(-125.0, 24.5, -66.9, 49.5),
@@ -79,7 +94,7 @@ def seasonal_outlook(out_path: str | Path = "cascadia_seasonal_map.png",
         cols=["seasonal_fire", "seasonal_flood", "seasonal_heat"],
         boundaries=geo.conus_states(), value_label="seasonal tendency (0.5=normal)",
         suptitle=(f"Cascadia — ENSO seasonal hazard outlook (next 1-3 months)\n"
-                  f"{enso.label()} · {enso.season} {enso.year}"),
+                  f"{enso.label()} · {enso.season} {enso.year}{lead_note}"),
         description=(
             "IN PLAIN TERMS: El Nino and La Nina tilt the odds of a wet/dry, "
             "warm/cool season differently in each region. Given the current ocean "
