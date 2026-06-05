@@ -17,20 +17,19 @@ from .skill import (brier_score, brier_skill_score, reliability_curve)
 
 def validate_flood(out_path: str | Path = "cascadia_flood_skill.png",
                    verbose: bool = True) -> dict:
-    from sklearn.ensemble import HistGradientBoostingClassifier
     from sklearn.metrics import roc_auc_score, average_precision_score
     from sklearn.model_selection import GroupKFold, cross_val_predict
     from .training.dataset import build_dataset, FEATURES
+    from .training.train_flood import make_flood_model
 
     cfg = Config.load()
     data = build_dataset(cfg, verbose=verbose)
     X, y = data[FEATURES], data["flood"].to_numpy()
     groups = data["site_no"]
-    clf = HistGradientBoostingClassifier(max_depth=3, learning_rate=0.08,
-                                         max_iter=300, l2_regularization=1.0,
-                                         class_weight="balanced", random_state=0)
-    oof = cross_val_predict(clf, X, y, cv=GroupKFold(5), groups=groups,
-                            method="predict_proba")[:, 1]
+    # Same calibrated model as deployed; OOF by gage (calibration learned within
+    # each training fold, so the reliability estimate is honest).
+    oof = cross_val_predict(make_flood_model(), X, y, cv=GroupKFold(5),
+                            groups=groups, method="predict_proba")[:, 1]
     m = {
         "brier": brier_score(oof, y), "bss": brier_skill_score(oof, y),
         "roc_auc": float(roc_auc_score(y, oof)),

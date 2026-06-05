@@ -17,10 +17,23 @@ from pathlib import Path
 
 import joblib
 import numpy as np
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import (average_precision_score, brier_score_loss,
                              roc_auc_score)
 from sklearn.model_selection import GroupKFold, cross_val_predict
+
+
+def make_flood_model() -> CalibratedClassifierCV:
+    """Gradient-boosting flood model wrapped in isotonic probability calibration.
+
+    The balanced base model discriminates well but is over-confident; isotonic
+    calibration (fit on an internal CV split) makes a predicted 0.6 mean ~0.6.
+    """
+    base = HistGradientBoostingClassifier(
+        max_depth=3, learning_rate=0.08, max_iter=300,
+        l2_regularization=1.0, class_weight="balanced", random_state=0)
+    return CalibratedClassifierCV(base, method="isotonic", cv=3)
 
 from ..config import Config
 from .dataset import FEATURES, build_dataset
@@ -50,10 +63,7 @@ def train(years: tuple[int, int] = (2019, 2023), sites: int = 25,
     n_groups = groups.nunique()
     n_splits = min(5, n_groups)
 
-    clf = HistGradientBoostingClassifier(
-        max_depth=3, learning_rate=0.08, max_iter=300,
-        l2_regularization=1.0, class_weight="balanced", random_state=0,
-    )
+    clf = make_flood_model()
     gkf = GroupKFold(n_splits=n_splits)
     oof = cross_val_predict(clf, X, y, cv=gkf, groups=groups,
                             method="predict_proba")[:, 1]
