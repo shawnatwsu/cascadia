@@ -19,6 +19,13 @@ import webbrowser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+OUTPUT_DIR = ROOT / "outputs"
+
+
+def _outfile(name: str) -> Path:
+    """Absolute path inside the outputs/ folder (created on demand)."""
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    return OUTPUT_DIR / name
 
 
 def _open(path_or_url: str) -> None:
@@ -26,6 +33,14 @@ def _open(path_or_url: str) -> None:
         webbrowser.open(path_or_url)
     except Exception:
         pass
+
+
+def _announce(out) -> None:
+    """Print the saved file's FULL path and open it."""
+    p = Path(out).resolve()
+    print(f"\n✓ Saved: {p}")
+    print("  (opening it now…)")
+    _open(p.as_uri())
 
 
 def cmd_map(args: list[str]) -> None:
@@ -40,14 +55,12 @@ def cmd_map(args: list[str]) -> None:
     print("\nTop risk cells:\n" + res.top_cells(8).to_string(index=False))
 
     as_of = cfg.as_of.date().isoformat() if cfg.as_of else "live"
-    out = ROOT / "cascadia_risk_map.png"
+    out = _outfile("live_forecast_map.png")
     static_risk_map(res.risk, cfg.region.name, out, panels=True, as_of=as_of,
                     value_label="hazard probability (next 7 days)",
                     provenance=("Open-Meteo 7-day forecast · USGS seismicity+streamflow "
                                 "· USGS landslide inventory · NASA FIRMS · Albers equal-area"))
-    print(f"\n✓ Map written: {out}")
-    print("  Opening it…")
-    _open(out.resolve().as_uri())
+    _announce(out)
 
 
 def cmd_train(args: list[str]) -> None:
@@ -106,22 +119,20 @@ def cmd_parcel(args: list[str]) -> None:
     address = " ".join(args)
     print(f"Assessing: {address}\n(geocoding + running the cascade engine at that point…)\n")
     print(json.dumps(assess_address(address), indent=2))
-    out = parcel_report(address)
+    out = parcel_report(address, out_path=_outfile("parcel_report.png"))
     if out:
-        print(f"\n✓ Parcel report map: {out}")
-        _open(Path(out).resolve().as_uri())
+        _announce(out)
 
 
 def cmd_conditions(args: list[str]) -> None:
-    from cascadia.conditions import conditions_map, REGIONS
+    from cascadia.conditions import conditions_map, region_keys
     region = (args[0].lower() if args else "pnw")
-    if region not in REGIONS:
-        print(f"Unknown region '{region}'. Choices: {', '.join(REGIONS)}")
+    if region not in region_keys():
+        print(f"Unknown region '{region}'. Choices: {', '.join(region_keys())}")
         return
     print(f"Building GRIDMET 4km hazard-conditions nowcast for {region.upper()}…\n")
-    _, out = conditions_map(region)
-    print("  Opening map…")
-    _open(Path(out).resolve().as_uri())
+    _, out = conditions_map(region, out_path=_outfile(f"conditions_{region}.png"))
+    _announce(out)
 
 
 def cmd_impact(args: list[str]) -> None:
@@ -129,9 +140,8 @@ def cmd_impact(args: list[str]) -> None:
     from cascadia.impact import impact_map
     print(f"Building expected-IMPACT map for {region.upper()} "
           "(hazard probability x population)…\n")
-    _, out = impact_map(region)
-    print(f"\n✓ Impact map: {out}")
-    _open(Path(out).resolve().as_uri())
+    _, out = impact_map(region, out_path=_outfile(f"impact_{region}.png"))
+    _announce(out)
 
 
 def cmd_seasonal(args: list[str]) -> None:
@@ -139,22 +149,21 @@ def cmd_seasonal(args: list[str]) -> None:
     lead = int(args[0]) if args and args[0].isdigit() else 0
     msg = (f"using the {lead}-month ENSO forecast" if lead else "using the current ENSO state")
     print(f"Building ENSO-driven seasonal hazard outlook ({msg})…\n")
-    _, out = seasonal_outlook(lead=lead)
-    print(f"\n✓ Seasonal outlook: {out}")
-    _open(Path(out).resolve().as_uri())
+    name = f"seasonal_lead{lead}.png" if lead else "seasonal_current.png"
+    _, out = seasonal_outlook(out_path=_outfile(name), lead=lead)
+    _announce(out)
 
 
 def cmd_subseasonal(args: list[str]) -> None:
     from cascadia.subseasonal import subseasonal_outlook
-    from cascadia.conditions import REGIONS
+    from cascadia.conditions import region_keys
     region = (args[0].lower() if args else "pnw")
-    if region not in REGIONS:
-        print(f"Unknown region '{region}'. Choices: {', '.join(REGIONS)}")
+    if region not in region_keys():
+        print(f"Unknown region '{region}'. Choices: {', '.join(region_keys())}")
         return
     print(f"Building weeks 2-6 sub-seasonal outlook for {region.upper()}…\n")
-    _, out = subseasonal_outlook(region)
-    print("  Opening map…")
-    _open(Path(out).resolve().as_uri())
+    _, out = subseasonal_outlook(region, out_path=_outfile(f"subseasonal_{region}.png"))
+    _announce(out)
 
 
 COMMANDS = {
@@ -172,6 +181,13 @@ COMMANDS = {
 
 
 def main() -> None:
+    # Make console output UTF-8 safe regardless of how Python was launched
+    # (Windows consoles default to cp1252 and choke on ✓/· etc.).
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
     cmd = sys.argv[1].lower() if len(sys.argv) > 1 else ""
     if cmd in ("-h", "--help", "help"):
         print(__doc__)
