@@ -1,5 +1,8 @@
 # 🌎 Cascadia — a compound & cascading multi-hazard engine
 
+[![tests](https://github.com/shawnatwsu/cascadia/actions/workflows/tests.yml/badge.svg)](https://github.com/shawnatwsu/cascadia/actions/workflows/tests.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 > Most hazard systems answer *"what is the flood risk?"* — one hazard at a time,
 > in isolation. **Cascadia** answers a harder, more useful question:
 > **"given conditions right now, which hazards are likely, where, who is exposed,
@@ -214,6 +217,16 @@ run.py / run.ps1 / run.bat   one-command launcher
 - Gridded forecast (NDFD/GFS) for CONUS‑wide *forward* forecasts; hosted demo
 
 ---
+
+## Reproducibility & provenance
+
+- **Tests:** `pytest tests/` — offline unit tests for the cascade math, skill
+  metrics, and predictor logic (run in CI on Python 3.10–3.12).
+- **Pinned environment:** `requirements.txt` (loose) + `requirements.lock` (exact).
+- **Data provenance:** every source, access method, and license is documented in
+  [DATA_SOURCES.md](DATA_SOURCES.md). Validation data are static archives, so the
+  `run.ps1 skill` results are reproducible.
+- **Citation:** see [CITATION.cff](CITATION.cff).
 
 ## License
 

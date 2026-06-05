@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+title: "Cascadia: a compound & cascading multi-hazard engine on open data"
+message: "If you use this software or its results, please cite it."
+type: software
+authors:
+  - family-names: Preston
+    given-names: Shawn
+repository-code: "https://github.com/shawnatwsu/cascadia"
+license: MIT
+version: "0.1.0"
+keywords:
+  - natural hazards
+  - compound hazards
+  - cascading hazards
+  - multi-hazard risk
+  - wildfire smoke
+  - ENSO
+  - forecast verification
+  - open data
+abstract: >-
+  Cascadia fuses free, open United States data into a probabilistic cascade
+  graph spanning six hazards (flood, earthquake, wildfire, landslide, heat,
+  wildfire smoke), where hazards can trigger one another via condition-gated
+  edges. It scales from a single address to the contiguous US, reports expected
+  human impact, and provides live, sub-seasonal, and ENSO-driven seasonal
+  outlooks. The project emphasizes measured, honest forecast skill: the flood
+  predictor is calibrated and validated (ROC-AUC ~0.95), and the fire-to-smoke
+  cascade is shown to add statistically significant skill over an
+  independent-hazard baseline when validated against EPA-observed PM2.5.
