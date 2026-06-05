@@ -28,6 +28,30 @@ The name is a double meaning: the **Cascadia** bioregion (Pacific Northwest)
 
 ---
 
+## Gallery
+
+**National multi‑hazard nowcast** (`run.ps1 conditions conus`) — six hazards on one frame, 4 km, Albers equal‑area, each panel with its own scale:
+
+![CONUS multi-hazard conditions](docs/conus_conditions.png)
+
+**Expected human impact** (`run.ps1 impact conus`) — hazard probability × Census population = expected people affected:
+
+![CONUS impact](docs/impact_conus.png)
+
+**Address‑level report** (`run.ps1 parcel "..."`) — a locator map + per‑hazard probabilities for any US address:
+
+![Parcel report](docs/parcel_report.png)
+
+**Honest skill — flood model is calibrated** (`run.ps1 skill`) — the reliability curve sits on the diagonal (a "0.6" verifies ~0.6); ROC‑AUC 0.95, Brier skill +0.51:
+
+![Flood calibration](docs/flood_calibration.png)
+
+**Honest skill — ENSO is a *weak* US seasonal predictor** — moderate correlations (top), but near‑zero out‑of‑sample tercile skill (bottom). We show this rather than overstate it:
+
+![ENSO teleconnection skill](docs/enso_skill.png)
+
+---
+
 ## Quick start
 
 **Requirements:** Python 3.10+ on Windows/macOS/Linux.
