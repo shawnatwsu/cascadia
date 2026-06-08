@@ -53,6 +53,10 @@ The name is a double meaning: the **Cascadia** bioregion (Pacific Northwest)
 
 ![ENSO teleconnection skill](docs/enso_skill.png)
 
+**Would it have flagged real events?** (`run.ps1 hindcast`) — run the engine *historically* at addresses that actually experienced a hazard, vs a calm control date. It gave a **72% flood probability** at a Chehalis WA address the week of the 2007 flood (≈0 in calm August), flagged the Camp Fire and Almeda Fire areas, and stayed near zero at a safe inland address — warns when it should, quiet when it shouldn't:
+
+![Parcel hindcast](docs/parcel_hindcast.png)
+
 **The cascade *adds skill* — significantly** (`run.ps1 skill`) — validated against EPA‑measured PM2.5 across **4 smoke episodes** (2018–2023, West + cross‑border Canadian smoke; n = 1,131 monitor‑days). Modeling the fire→smoke **downwind transport** (the cascade) ~doubles the correlation vs fire **proximity** (treating smoke as independent): Δr = +0.063, **95% bootstrap CI [+0.008, +0.117]** (excludes zero). Direct evidence for the project's central claim:
 
 ![Fire→smoke cascade validation](docs/cascade_skill.png)
@@ -105,6 +109,7 @@ Run any of these as `.\run.ps1 <command>` (Windows) or `python run.py <command>`
 | `run.ps1 subseasonal <region>` | **Weeks 2–6** fire/drought/heat outlook (land‑memory) |
 | `run.ps1 seasonal [1‑3]` | **ENSO seasonal outlook**; optional N‑month ENSO forecast lead |
 | `run.ps1 parcel "<address>"` | **Address‑level** hazard report (JSON + a one‑page map) |
+| `run.ps1 hindcast` | **Does it work?** Replays real hazard events at their addresses |
 | `run.ps1 skill` | **Validation suite** → reliability/skill figures in `outputs/` |
 | `run.ps1 validate` | Replay documented disasters (2007 & 2021 PNW floods) |
 | `run.ps1 train [flood\|fire]` | (Re)train an ML predictor + print its scorecard |

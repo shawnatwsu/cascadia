@@ -144,6 +144,17 @@ def cmd_impact(args: list[str]) -> None:
     _announce(out)
 
 
+def cmd_hindcast(args: list[str]) -> None:
+    """Would the product have flagged real hazard events? (address hindcast)."""
+    from cascadia.parcel_hindcast import run_hindcast, render_hindcast
+    print("Hindcasting real hazard events (event week vs calm control, per address)…\n")
+    df = run_hindcast(verbose=True)
+    if not df.empty:
+        out = _outfile("parcel_hindcast.png")
+        render_hindcast(df, out)
+        _announce(out)
+
+
 def cmd_skill(args: list[str]) -> None:
     """Calibration & skill validation — the peer-review verification suite."""
     print("=== Cascadia skill & calibration validation ===\n")
@@ -203,6 +214,7 @@ COMMANDS = {
     "seasonal": cmd_seasonal,
     "impact": cmd_impact,
     "skill": cmd_skill,
+    "hindcast": cmd_hindcast,
 }
 
 

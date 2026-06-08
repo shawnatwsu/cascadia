@@ -78,12 +78,18 @@ class ParcelRisk:
 
 def assess_point(lat: float, lon: float, config: Config | None = None,
                  buffer_deg: float = 0.25, state: str | None = None,
-                 address: str | None = None) -> ParcelRisk:
-    """Run the cascade engine on a small box around a point and read the cell."""
+                 address: str | None = None, as_of: str | None = None) -> ParcelRisk:
+    """Run the cascade engine on a small box around a point and read the cell.
+
+    `as_of` (ISO date) runs the engine HISTORICALLY for that date (archive data)
+    — used to hindcast whether the model would have flagged a past event.
+    """
     config = config or Config.load()
     bbox = (lon - buffer_deg, lat - buffer_deg, lon + buffer_deg, lat + buffer_deg)
     cfg = config.with_region(bbox, name=f"parcel @ {lat:.4f},{lon:.4f}",
                              state=state or config.region.state)
+    if as_of:
+        cfg = cfg.with_as_of(as_of)
     res = run_pipeline(cfg, verbose=False)
     risk = res.risk
     d2 = (risk["lat"] - lat) ** 2 + (risk["lon"] - lon) ** 2
@@ -109,16 +115,18 @@ def assess_point(lat: float, lon: float, config: Config | None = None,
 
     # Forecast-ensemble uncertainty for the weather-driven hazards (31 members).
     # Use the ensemble MEDIAN as the point value so it is consistent with its
-    # interval and reflects the 7-day forecast (not the nowcast).
+    # interval and reflects the 7-day forecast (not the nowcast). Live mode only
+    # (the GFS ensemble is a forecast; historical hindcasts use the as-of value).
     uncertainty = {}
-    try:
-        from .sources.ensemble import hazard_uncertainty
-        uncertainty = hazard_uncertainty(frow, lat, lon)
-        for h, (med, _, _) in uncertainty.items():
-            if h in hazards:
-                hazards[h] = med
-    except Exception:
-        pass
+    if not as_of:
+        try:
+            from .sources.ensemble import hazard_uncertainty
+            uncertainty = hazard_uncertainty(frow, lat, lon)
+            for h, (med, _, _) in uncertainty.items():
+                if h in hazards:
+                    hazards[h] = med
+        except Exception:
+            pass
 
     # Recompute compound metrics from the (refined) per-hazard probabilities.
     ps = np.array(list(hazards.values()))
@@ -235,7 +243,8 @@ def parcel_report(address: str, out_path: str | Path = "cascadia_parcel_map.png"
     return out_path
 
 
-def assess_address(address: str, config: Config | None = None) -> dict:
+def assess_address(address: str, config: Config | None = None,
+                   as_of: str | None = None) -> dict:
     """Full address -> risk: geocode then assess. Returns a JSON-ready dict."""
     config = config or Config.load()
     g = geocode(address, config)
@@ -243,7 +252,7 @@ def assess_address(address: str, config: Config | None = None) -> dict:
         return {"address": address, "matched": False,
                 "error": "address could not be geocoded"}
     pr = assess_point(g.lat, g.lon, config=config, state=g.state,
-                      address=g.matched_address)
+                      address=g.matched_address, as_of=as_of)
     from .models.predictors import HAZARD_KIND
     out = pr.to_dict()
     out["matched"] = True
