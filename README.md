@@ -57,6 +57,10 @@ The name is a double meaning: the **Cascadia** bioregion (Pacific Northwest)
 
 ![Parcel hindcast](docs/parcel_hindcast.png)
 
+**A defensible performance number — on 100 *independent* flood events** (`run.ps1 performance`) — beyond anecdotes, we score the operational flood model on **100 real NWS Storm Events floods (2018–2021) + 100 matched non-events** (same locations, shifted calm dates). Labels come from the NWS event database — *independent* of the gage‑exceedance labels the model was trained on. Result: **ROC‑AUC 0.715, 95% bootstrap CI [0.64, 0.78]** (excludes 0.5 — real, significant discrimination), flagging **56% of real floods at a 22% false‑alarm rate**. Riverine floods (the model's design target) score higher (AUC 0.74) than flash floods (0.70), as expected for a daily‑resolution model:
+
+![Flood performance on independent events](docs/flood_performance.png)
+
 **The cascade *adds skill* — significantly** (`run.ps1 skill`) — validated against EPA‑measured PM2.5 across **4 smoke episodes** (2018–2023, West + cross‑border Canadian smoke; n = 1,131 monitor‑days). Modeling the fire→smoke **downwind transport** (the cascade) ~doubles the correlation vs fire **proximity** (treating smoke as independent): Δr = +0.063, **95% bootstrap CI [+0.008, +0.117]** (excludes zero). Direct evidence for the project's central claim:
 
 ![Fire→smoke cascade validation](docs/cascade_skill.png)
@@ -110,6 +114,7 @@ Run any of these as `.\run.ps1 <command>` (Windows) or `python run.py <command>`
 | `run.ps1 seasonal [1‑3]` | **ENSO seasonal outlook**; optional N‑month ENSO forecast lead |
 | `run.ps1 parcel "<address>"` | **Address‑level** hazard report (JSON + a one‑page map) |
 | `run.ps1 hindcast` | **Does it work?** Replays real hazard events at their addresses |
+| `run.ps1 performance` | **How well?** Scores 100 independent NWS floods → ROC‑AUC, hit/false‑alarm |
 | `run.ps1 skill` | **Validation suite** → reliability/skill figures in `outputs/` |
 | `run.ps1 validate` | Replay documented disasters (2007 & 2021 PNW floods) |
 | `run.ps1 train [flood\|fire]` | (Re)train an ML predictor + print its scorecard |

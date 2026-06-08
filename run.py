@@ -155,6 +155,19 @@ def cmd_hindcast(args: list[str]) -> None:
         _announce(out)
 
 
+def cmd_performance(args: list[str]) -> None:
+    """Scaled flood hindcast on independent NWS Storm Events -> defensible claim."""
+    from cascadia.validation_scaled import scaled_flood_hindcast
+    n = int(args[0]) if args and args[0].isdigit() else 100
+    print(f"Scoring {n} real NWS flood events + {n} matched non-events with the "
+          "calibrated flood model (first run downloads event files + queries ERA5)…\n")
+    out = _outfile("flood_performance.png")
+    res = scaled_flood_hindcast(n=n, out_path=out, verbose=True)
+    print(f"\n✓ Defensible claim: flags {res['hit_rate']:.0%} of real floods at a "
+          f"{res['false_alarm_rate']:.0%} false-alarm rate (ROC-AUC {res['roc_auc']:.3f}).")
+    _announce(out)
+
+
 def cmd_skill(args: list[str]) -> None:
     """Calibration & skill validation — the peer-review verification suite."""
     print("=== Cascadia skill & calibration validation ===\n")
@@ -215,6 +228,7 @@ COMMANDS = {
     "impact": cmd_impact,
     "skill": cmd_skill,
     "hindcast": cmd_hindcast,
+    "performance": cmd_performance,
 }
 
 

@@ -16,7 +16,12 @@ probability). All are **research prototypes; defer to official agencies.**
   USGS gage exceeding its 95th‑percentile stage within the window.
 - **Validation:** out‑of‑fold, GroupKFold **by gage** (no spatial leakage):
   **ROC‑AUC 0.95, Brier 0.055, Brier skill score +0.51**, reliability on the
-  diagonal (`run.ps1 skill`).
+  diagonal (`run.ps1 skill`). **Independent event test** (`run.ps1 performance`):
+  scored against **100 NWS Storm Events floods + 100 matched non‑events**
+  (2018–2021, labels independent of training) → **ROC‑AUC 0.715, 95% CI
+  [0.64, 0.78]**; **56% hit rate at 22% false alarm**; riverine floods 0.74 vs
+  flash floods 0.70. (Out‑of‑fold AUC is higher because those gages/labels match
+  the training distribution; the event test is the harder, independent number.)
 - **Limitations:** gage‑exceedance ≠ damaging flood; ~5 km resolution; trained on
   a Pacific‑NW gage sample (national retrain pending); no pluvial/coastal flood.
 
