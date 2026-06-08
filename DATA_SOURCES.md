@@ -26,6 +26,7 @@ output is traceable to its inputs (a requirement for agency / scientific use).
 | ENSO index | NOAA CPC | Oceanic Niño Index (ONI), 1950– | static ASCII | no | monthly | public domain |
 | Observed climate | NOAA NCEI | nClimDiv statewide precip/temp, 1895– | static files | no | monthly | public domain |
 | Observed PM2.5 | EPA AQS | daily 24-h PM2.5 (88101) | static yearly ZIP | no | annual files | public domain |
+| Storm events | NOAA NCEI | Storm Events DB (flood events, lat/lon + date) | static yearly gzip CSV | no | annual files | public domain |
 | Region definitions | US Global Change Research Program | NCA5 regions (state groupings) | encoded in `geo.py` | no | static | public |
 | Boundaries | Natural Earth | US states (via cartopy) | bundled/CDN | no | static | public domain |
 

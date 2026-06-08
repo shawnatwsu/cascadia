@@ -113,6 +113,56 @@ def point_daily(cube: xr.Dataset, lat: float, lon: float) -> pd.DataFrame:
     return p.to_dataframe().reset_index().set_index("time")
 
 
+def point_series(lat: float, lon: float, start: str, end: str, cache_dir: Path,
+                 variables: list[str] | None = None, verbose: bool = False) -> pd.DataFrame:
+    """Daily GRIDMET for a SINGLE point + period (server-side nearest-cell subset).
+
+    Light-weight counterpart to region_daily for scoring scattered point-dates
+    (e.g. the wildfire event hindcast): OPeNDAP transfers just one grid cell's
+    time series per variable. Cached to a small pickle per point/window/vars.
+    """
+    import time as _time
+    variables = variables or ["burning_index", "erc", "fm100"]
+    tag = (f"gmpt_{lat:.3f}_{lon:.3f}_{start}_{end}_{'_'.join(variables)}"
+           .replace(".", "p").replace("-", "m"))
+    cache = Path(cache_dir) / f"{tag}.pkl"
+    if cache.exists():
+        return pd.read_pickle(cache)
+    cols = {}
+    for short in variables:
+        code = VARS[short]
+        url = THREDDS.format(code=code)
+        for attempt in range(3):
+            try:
+                ds = xr.open_dataset(url, engine="pydap")
+                primary = [v for v in ds.data_vars if v != "crs"][0]
+                da = ds[primary].sel(lat=lat, lon=lon, method="nearest").sel(
+                    day=slice(start, end))
+                if short in KELVIN_VARS:
+                    da = da - 273.15
+                s = da.load().to_series()
+                cols[short] = s
+                if verbose:
+                    print(f"  GRIDMET pt {short:<13} {len(s)}d")
+                break
+            except Exception as exc:
+                if attempt == 2:
+                    if verbose:
+                        print(f"  GRIDMET pt {short} FAILED: {repr(exc)[:100]}")
+                else:
+                    _time.sleep(2 * (attempt + 1))
+    if not cols:
+        return pd.DataFrame()
+    df = pd.DataFrame(cols)
+    df.index = pd.to_datetime(df.index)
+    df = df.sort_index()
+    try:
+        df.to_pickle(cache)
+    except Exception:
+        pass
+    return df
+
+
 def gridmet_window(config) -> tuple[str, str]:
     """Target window for GRIDMET. Historical: the as-of window. Live: the most
     recent ~12 days (GRIDMET has ~5-day latency, so 'now' isn't available)."""

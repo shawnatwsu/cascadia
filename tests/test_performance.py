@@ -8,14 +8,52 @@ import numpy as np
 import pandas as pd
 
 from cascadia import validation_scaled as vs
+from cascadia import validation_fire as vf
 from cascadia.sources import storm_events as se
 
 
 def test_public_api_exists():
-    for fn in ("flood_prob_at", "flow_anomaly_at", "scaled_flood_hindcast"):
+    for fn in ("flood_prob_at", "flow_anomaly_at", "scaled_flood_hindcast",
+               "lead_time_curve"):
         assert callable(getattr(vs, fn))
+    for fn in ("fire_danger_at", "fire_event_hindcast"):
+        assert callable(getattr(vf, fn))
     for fn in ("events", "sample_events"):
         assert callable(getattr(se, fn))
+
+
+def test_window_feats_and_flow_asof():
+    idx = pd.date_range("2021-11-01", periods=20, freq="D")
+    daily = pd.DataFrame({"precip_day": np.arange(20.0),
+                          "soil_day": np.linspace(0.2, 0.4, 20)}, index=idx)
+    issue = pd.Timestamp("2021-11-05")
+    feats = vs._window_feats(daily, issue, horizon=7)
+    assert feats is not None
+    # forward window is strictly AFTER issue -> excludes the issue day's precip
+    expected = daily.loc[(daily.index > issue) &
+                         (daily.index <= issue + pd.Timedelta(days=7))]
+    assert feats[0] == float(expected["precip_day"].sum())
+    # empty / no-gage discharge -> neutral fallback, no crash
+    assert vs._flow_asof(None, issue) == vs.NEUTRAL_FLOW
+
+
+def test_fire_danger_formula_monotonic(monkeypatch):
+    """Drier/hotter GRIDMET inputs must yield higher danger, capped at 0.6."""
+    from cascadia.config import Config
+    cfg = Config.load()
+
+    def fake_series(dangerous):
+        bi = 90.0 if dangerous else 5.0
+        erc = 90.0 if dangerous else 5.0
+        fm = 3.0 if dangerous else 25.0
+        return pd.DataFrame({"burning_index": [bi], "erc": [erc], "fm100": [fm]})
+
+    import cascadia.sources.gridmet as gm
+    monkeypatch.setattr(gm, "point_series", lambda *a, **k: fake_series(True))
+    hi = vf.fire_danger_at(40.0, -120.0, "2020-08-15", cfg)
+    monkeypatch.setattr(gm, "point_series", lambda *a, **k: fake_series(False))
+    lo = vf.fire_danger_at(40.0, -120.0, "2020-08-15", cfg)
+    assert 0.0 <= lo < hi <= 0.6
 
 
 def test_render_and_metrics_on_synthetic(tmp_path):

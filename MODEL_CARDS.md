@@ -22,6 +22,9 @@ probability). All are **research prototypes; defer to official agencies.**
   [0.64, 0.78]**; **56% hit rate at 22% false alarm**; riverine floods 0.74 vs
   flash floods 0.70. (Out‑of‑fold AUC is higher because those gages/labels match
   the training distribution; the event test is the harder, independent number.)
+  **Lead‑time** (`run.ps1 leadtime`): skill (AUC ≈ 0.65–0.67) persists to the
+  7‑day forecast horizon, then decays to ≈0.54 by 14 days as the event leaves the
+  window — leaving only antecedent soil/streamflow.
 - **Limitations:** gage‑exceedance ≠ damaging flood; ~5 km resolution; trained on
   a Pacific‑NW gage sample (national retrain pending); no pluvial/coastal flood.
 
@@ -43,9 +46,15 @@ probability). All are **research prototypes; defer to official agencies.**
   moisture (+ live FIRMS detections, red‑flag warnings).
 - **Method:** operational NFDRS fire‑danger variables → conservative,
   ignition‑limited score; observed fire dominates when present.
-- **Validation:** not occurrence‑validated (met‑only occurrence ML had ~no skill
-  — see history). Uses established fire‑danger indices instead.
-- **Limitations:** danger ≠ occurrence; no ignition or fuel‑type model.
+- **Validation:** **independent‑event test** (`run.ps1 fireperf`): the danger
+  mapping scored against **80 real NASA FIRMS satellite fire location‑days + 80
+  matched non‑events** (2018–2021) → **ROC‑AUC 0.938, 95% CI [0.90, 0.97]**;
+  **92% hit rate at 15% false alarm**. FIRMS (satellite) is independent of GRIDMET
+  (reanalysis). (Met‑only *occurrence* ML had ~no transferable skill — see
+  history — which is why the leaf uses established NFDRS indices instead.)
+- **Limitations:** danger is **diagnostic, not a multi‑day forecast**; danger ≠
+  occurrence (ignition still required); no ignition or fuel‑type model; the AUC
+  reflects discrimination during/around fire season, not lead‑time skill.
 
 ## Landslide
 - **Kind:** relative index ⚠️

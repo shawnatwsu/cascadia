@@ -168,6 +168,29 @@ def cmd_performance(args: list[str]) -> None:
     _announce(out)
 
 
+def cmd_leadtime(args: list[str]) -> None:
+    """How many days ahead is the flood signal detectable? (AUC vs lead)."""
+    from cascadia.validation_scaled import lead_time_curve
+    n = int(args[0]) if args and args[0].isdigit() else 80
+    print(f"Lead-time analysis on {n} flood events (AUC at 1-14 days before the event)…\n")
+    out = _outfile("flood_leadtime.png")
+    res = lead_time_curve(n=n, out_path=out, verbose=True)
+    _announce(out)
+
+
+def cmd_fireperf(args: list[str]) -> None:
+    """Scaled wildfire hindcast on independent NWS Storm Events -> AUC."""
+    from cascadia.validation_fire import fire_event_hindcast
+    n = int(args[0]) if args and args[0].isdigit() else 80
+    print(f"Scoring {n} real NWS wildfires + {n} matched non-events with the engine's "
+          "GRIDMET fire-danger mapping (first run pulls GRIDMET point series)…\n")
+    out = _outfile("fire_performance.png")
+    res = fire_event_hindcast(n=n, out_path=out, verbose=True)
+    print(f"\n✓ Defensible claim: flags {res['hit_rate']:.0%} of real wildfires at a "
+          f"{res['false_alarm_rate']:.0%} false-alarm rate (ROC-AUC {res['roc_auc']:.3f}).")
+    _announce(out)
+
+
 def cmd_skill(args: list[str]) -> None:
     """Calibration & skill validation — the peer-review verification suite."""
     print("=== Cascadia skill & calibration validation ===\n")
@@ -229,6 +252,8 @@ COMMANDS = {
     "skill": cmd_skill,
     "hindcast": cmd_hindcast,
     "performance": cmd_performance,
+    "leadtime": cmd_leadtime,
+    "fireperf": cmd_fireperf,
 }
 
 

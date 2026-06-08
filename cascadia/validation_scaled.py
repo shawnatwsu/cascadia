@@ -97,6 +97,136 @@ def flood_prob_at(lat: float, lon: float, date, config: Config,
     return float(model.predict(X)[0])
 
 
+def _window_feats(daily: pd.DataFrame, issue: pd.Timestamp, horizon: int = 7):
+    """precip total + soil peak over the forward window [issue+1 .. issue+horizon],
+    matching how the model was trained (it consumes a forward precip forecast)."""
+    w = daily.loc[(daily.index > issue) &
+                  (daily.index <= issue + pd.Timedelta(days=horizon))]
+    if w.empty or w["precip_day"].isna().all():
+        return None
+    return float(w["precip_day"].sum()), float(w["soil_day"].max())
+
+
+def _flow_asof(disc: pd.Series, issue: pd.Timestamp) -> float:
+    from .training.dataset import _flow_anomaly
+    if disc is None or disc.empty:
+        return NEUTRAL_FLOW
+    s = disc[disc.index <= issue].dropna()
+    if len(s) < 8:
+        return NEUTRAL_FLOW
+    return _flow_anomaly(s, len(s) - 1)
+
+
+def lead_time_curve(years=(2018, 2019, 2020, 2021), n: int = 80,
+                    leads=(1, 2, 3, 5, 7, 10, 14),
+                    out_path: str | Path = "cascadia_flood_leadtime.png",
+                    throttle_s: float = 0.3, verbose: bool = True) -> dict:
+    """How many days AHEAD is the flood signal already present? For each lead L,
+    score the model as if the forecast were issued L days before the event (a
+    forward 7-day window from the issue date) and report AUC vs lead.
+
+    ERA5/streamflow are fetched once per point over a wide span, then sliced per
+    lead locally — so this costs ~the same API calls as the single-window test."""
+    from sklearn.metrics import roc_auc_score
+    from .training.dataset import _fetch_weather_daily, _fetch_dv
+    from .training.train_flood import FEATURES
+    from .models.trained import load_trained
+    from .sources.storm_events import sample_events
+    cfg = Config.load()
+    log = (lambda *a: print(*a)) if verbose else (lambda *a: None)
+    model = load_trained("flood")
+    ev = sample_events(years, ("Flood", "Flash Flood"), cfg.cache_dir, n=n, seed=0)
+    if ev.empty:
+        raise RuntimeError("no flood events sampled")
+    log(f"Lead-time analysis on {len(ev)} events across leads {list(leads)} days…")
+    rng = np.random.default_rng(0)
+    lo_date = pd.Timestamp("2000-02-01")
+    hi_date = pd.Timestamp.utcnow().tz_localize(None) - pd.Timedelta(days=10)
+    maxlead = max(leads)
+
+    def _fetch_point(lat, lon, anchor):
+        """Wide ERA5 daily + nearest-gage discharge bracketing all leads."""
+        a = pd.Timestamp(anchor)
+        wx = _fetch_weather_daily(lat, lon,
+                                  (a - pd.Timedelta(days=maxlead + 2)).date().isoformat(),
+                                  (a + pd.Timedelta(days=8)).date().isoformat(), cfg)
+        site = _nearest_gage(lat, lon, cfg)
+        disc = None
+        if site:
+            try:
+                dv = _fetch_dv(site, (a - pd.Timedelta(days=maxlead + 40)).date().isoformat(),
+                               a.date().isoformat(), cfg)
+                if not dv.empty and "discharge" in dv:
+                    disc = dv["discharge"]
+            except Exception:
+                disc = None
+        return wx, disc
+
+    per_lead = {L: {"y": [], "p": []} for L in leads}
+    for i, e in ev.iterrows():
+        off = int(rng.integers(60, 300)) * (1 if rng.random() < 0.5 else -1)
+        cdate = min(max(e["date"] + pd.Timedelta(days=off), lo_date), hi_date)
+        wx_e, disc_e = _fetch_point(e["lat"], e["lon"], e["date"])
+        wx_c, disc_c = _fetch_point(e["lat"], e["lon"], cdate)
+        for L in leads:
+            for anchor, wx, disc, label in (
+                    (e["date"], wx_e, disc_e, 1), (cdate, wx_c, disc_c, 0)):
+                issue = pd.Timestamp(anchor) - pd.Timedelta(days=L)
+                feats = _window_feats(wx, issue) if not wx.empty else None
+                if feats is None:
+                    continue
+                X = pd.DataFrame([{ "precip_total_mm": feats[0],
+                                    "soil_moist_peak": feats[1],
+                                    "flow_anomaly": _flow_asof(disc, issue) }])[FEATURES]
+                per_lead[L]["y"].append(label)
+                per_lead[L]["p"].append(float(model.predict(X)[0]))
+        if throttle_s:
+            time.sleep(throttle_s)
+        if verbose and (i + 1) % 20 == 0:
+            log(f"  …{i + 1}/{len(ev)} events processed")
+
+    curve = {}
+    for L in leads:
+        y = np.array(per_lead[L]["y"]); p = np.array(per_lead[L]["p"])
+        if len(np.unique(y)) == 2:
+            curve[L] = {"auc": float(roc_auc_score(y, p)), "n": int((y == 1).sum())}
+    log("\n=== FLOOD LEAD-TIME (AUC vs days before event) ===")
+    for L, s in curve.items():
+        log(f"  lead {L:>2}d: ROC-AUC {s['auc']:.3f}  (n={s['n']})")
+    _render_leadtime(curve, out_path)
+    return {"curve": curve}
+
+
+def _render_leadtime(curve: dict, out_path):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    leads = sorted(curve)
+    aucs = [curve[L]["auc"] for L in leads]
+    fig, ax = plt.subplots(figsize=(8.5, 5.2), constrained_layout=True)
+    ax.plot(leads, aucs, "-o", color="#1f77b4", lw=2.2, ms=7)
+    ax.axhline(0.5, color="k", ls="--", lw=1, label="no skill")
+    ax.axvline(7, color="0.6", ls=":", lw=1.2, label="7-day forecast horizon")
+    for L, a in zip(leads, aucs):
+        ax.annotate(f"{a:.2f}", (L, a), textcoords="offset points",
+                    xytext=(0, 8), ha="center", fontsize=8.5)
+    ax.set_xlabel("forecast lead (days before the flood the warning is issued)")
+    ax.set_ylabel("ROC-AUC (discrimination)")
+    ax.set_ylim(0.45, max(0.85, max(aucs) + 0.05)); ax.set_xticks(leads)
+    ax.grid(alpha=0.3); ax.legend(loc="upper right", fontsize=9)
+    ax.set_title("Cascadia flood model — skill vs forecast lead time\n"
+                 "how many days ahead is the flood signal already detectable?",
+                 fontsize=12, weight="bold")
+    fig.text(0.5, -0.04, "Each lead L scores the model as if issued L days before the "
+             "event, on a forward 7-day window (matching training). ERA5 is reanalysis "
+             "(a perfect precip forecast), so this is the model's POTENTIAL lead skill: it "
+             "holds while the event is inside the 7-day window, then decays as the event "
+             "moves beyond the horizon and only antecedent soil/streamflow remain.",
+             ha="center", va="top", fontsize=8.3, color="0.35", wrap=True)
+    fig.savefig(out_path, dpi=140, bbox_inches="tight")
+    plt.close(fig)
+
+
 def scaled_flood_hindcast(years=(2018, 2019, 2020, 2021), n: int = 100,
                           out_path: str | Path = "cascadia_flood_performance.png",
                           throttle_s: float = 0.8, verbose: bool = True) -> dict:

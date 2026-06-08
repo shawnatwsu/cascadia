@@ -61,6 +61,14 @@ The name is a double meaning: the **Cascadia** bioregion (Pacific Northwest)
 
 ![Flood performance on independent events](docs/flood_performance.png)
 
+**How far ahead is the warning?** (`run.ps1 leadtime`) — scoring the same events as if the forecast were issued *N days early* shows the flood signal stays detectable (**AUC ≈ 0.65–0.67**) out to the model's **7‑day horizon**, then decays toward chance at 10–14 days as the event moves beyond the forecast window and only antecedent soil/streamflow remain. Exactly the shape a 7‑day model should have:
+
+![Flood lead-time skill](docs/flood_leadtime.png)
+
+**Wildfire holds up too — on independent satellite fires** (`run.ps1 fireperf`) — the wildfire leaf (GRIDMET NFDRS Burning Index + Energy Release Component + 100‑hr fuel moisture) is scored against **80 real NASA FIRMS fire location‑days + 80 matched non‑events**. FIRMS (satellite thermal) is *independent* of GRIDMET (reanalysis weather), so this is a genuine verification: **ROC‑AUC 0.938, 95% CI [0.90, 0.97]**, flagging **92% of real wildfires at a 15% false‑alarm rate**. (Fire danger is *diagnostic* of fire‑prone conditions, not a multi‑day‑ahead forecast — and it's seasonal, so this is the discrimination, not a free lunch.)
+
+![Wildfire performance on independent FIRMS fires](docs/fire_performance.png)
+
 **The cascade *adds skill* — significantly** (`run.ps1 skill`) — validated against EPA‑measured PM2.5 across **4 smoke episodes** (2018–2023, West + cross‑border Canadian smoke; n = 1,131 monitor‑days). Modeling the fire→smoke **downwind transport** (the cascade) ~doubles the correlation vs fire **proximity** (treating smoke as independent): Δr = +0.063, **95% bootstrap CI [+0.008, +0.117]** (excludes zero). Direct evidence for the project's central claim:
 
 ![Fire→smoke cascade validation](docs/cascade_skill.png)
@@ -115,6 +123,8 @@ Run any of these as `.\run.ps1 <command>` (Windows) or `python run.py <command>`
 | `run.ps1 parcel "<address>"` | **Address‑level** hazard report (JSON + a one‑page map) |
 | `run.ps1 hindcast` | **Does it work?** Replays real hazard events at their addresses |
 | `run.ps1 performance` | **How well?** Scores 100 independent NWS floods → ROC‑AUC, hit/false‑alarm |
+| `run.ps1 leadtime` | **How far ahead?** Flood AUC vs forecast lead (1–14 days) |
+| `run.ps1 fireperf` | **Wildfire skill** vs 80 independent FIRMS fires → ROC‑AUC (needs `FIRMS_MAP_KEY`) |
 | `run.ps1 skill` | **Validation suite** → reliability/skill figures in `outputs/` |
 | `run.ps1 validate` | Replay documented disasters (2007 & 2021 PNW floods) |
 | `run.ps1 train [flood\|fire]` | (Re)train an ML predictor + print its scorecard |
