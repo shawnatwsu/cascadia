@@ -290,14 +290,16 @@ def build_indicators(
     cells["eq_base_prob"] = _seismic_base_prob(
         cells, catalog, grid.res, horizon_days)
 
-    # --- Landslide susceptibility prior (smoothed USGS inventory density).
+    # --- Landslide susceptibility prior (smoothed USGS inventory density),
+    #     gated by local topographic relief so flat, slide-free terrain reads ~0
+    #     (same coarse-grid terrain gate as the nowcast; the per-parcel report
+    #     uses a finer DEM-slope gate directly).
     cells["ls_susceptibility"] = _landslide_susceptibility(cells, inventory)
-
-    # --- Terrain slope (DEM) so flat ground is correctly stable.
     if cache_dir is not None:
         try:
-            from ..sources.elevation import cell_slopes
-            cells["slope_deg"] = cell_slopes(cells, cache_dir, grid.res)
+            from ..sources.elevation import cell_relief, relief_factor
+            rf = relief_factor(cell_relief(cells, cache_dir, grid.res))
+            cells["ls_susceptibility"] = cells["ls_susceptibility"] * rf
         except Exception:
             pass
 
