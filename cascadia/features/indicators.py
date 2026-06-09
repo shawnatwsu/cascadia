@@ -231,17 +231,23 @@ def _landslide_susceptibility(cells: pd.DataFrame, inventory: pd.DataFrame,
     """Relative landslide susceptibility in [0,1] from smoothed historical
     landslide density (USGS inventory). Like the seismicity prior but, since the
     inventory is a compilation rather than a complete temporal catalog, used as a
-    *relative* spatial susceptibility, not an absolute rate. A small floor keeps
-    rainfall triggering meaningful everywhere."""
+    *relative* spatial susceptibility, not an absolute rate.
+
+    NO floor: a cell with no historical slides reads ~0, so heavy rain over flat,
+    slide-free terrain (e.g. the Great Plains) does NOT manufacture a landslide
+    signal. The inventory itself is the terrain gate — slides are only recorded on
+    real slopes — which is what the per-parcel DEM slope gate enforces directly.
+    """
     import numpy as np
     if inventory is None or inventory.empty:
-        return pd.Series(0.3, index=cells.index)
+        return pd.Series(0.0, index=cells.index)
     d = _smoothed_density(cells["lat"].to_numpy(), cells["lon"].to_numpy(),
                           inventory["lat"].to_numpy(), inventory["lon"].to_numpy(),
                           bandwidth_km)
-    # Normalize by a high percentile (robust to a few dense clusters), floor 0.15.
+    # Normalize by a high percentile (robust to a few dense clusters). No floor:
+    # zero inventory density -> ~zero susceptibility -> ~zero landslide risk.
     scale = np.percentile(d, 95) or 1.0
-    return pd.Series(np.clip(0.15 + 0.85 * d / scale, 0.0, 1.0), index=cells.index)
+    return pd.Series(np.clip(d / scale, 0.0, 1.0), index=cells.index)
 
 
 def build_indicators(

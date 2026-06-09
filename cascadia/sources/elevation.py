@@ -19,20 +19,25 @@ import requests
 ELEV_URL = "https://api.open-meteo.com/v1/elevation"
 
 
-def _fetch_elevations(lats, lons, timeout: int = 60) -> np.ndarray:
-    """Elevation (m) for points, in chunks of 100 (the API limit)."""
+def _fetch_elevations(lats, lons, timeout: int = 60, retries: int = 4) -> np.ndarray:
+    """Elevation (m) for points, in chunks of 100 (the API limit), with retries on
+    failed chunks (the batch DEM API rate-limits, leaving NaN holes otherwise)."""
+    import time
     lats, lons = np.asarray(lats, float), np.asarray(lons, float)
     out = np.full(len(lats), np.nan)
     for i in range(0, len(lats), 100):
         sl = slice(i, i + 100)
         params = {"latitude": ",".join(f"{v:.5f}" for v in lats[sl]),
                   "longitude": ",".join(f"{v:.5f}" for v in lons[sl])}
-        try:
-            r = requests.get(ELEV_URL, params=params, timeout=timeout)
-            r.raise_for_status()
-            out[sl] = r.json()["elevation"]
-        except Exception:
-            pass
+        for attempt in range(retries):
+            try:
+                r = requests.get(ELEV_URL, params=params, timeout=timeout)
+                r.raise_for_status()
+                out[sl] = r.json()["elevation"]
+                break
+            except Exception:
+                if attempt < retries - 1:
+                    time.sleep(1.5 * (attempt + 1))
     return out
 
 
@@ -93,3 +98,46 @@ def slope_factor(slope_deg) -> np.ndarray:
     """Landslide slope susceptibility multiplier in [0,1]: ~0 below ~3 deg
     (flat = stable), rising to 1 by ~20 deg. Linear ramp 3->20 degrees."""
     return np.clip((np.asarray(slope_deg, float) - 3.0) / 17.0, 0.0, 1.0)
+
+
+def cell_relief(cells, cache_dir: Path, res_deg: float) -> np.ndarray:
+    """Local topographic relief (metres) per grid cell = elevation range over the
+    cell + its 8 neighbours. A scale-appropriate terrain gate for COARSE grids,
+    where a slope *angle* would be near-zero everywhere: flat terrain (Florida, the
+    Great Plains) has ~tens of m of relief, real mountains have hundreds+. Cached
+    per region (elevation is static)."""
+    lats = cells["lat"].to_numpy(); lons = cells["lon"].to_numpy()
+    key = hashlib.sha1(
+        f"relief_{lats.min():.3f}_{lats.max():.3f}_{lons.min():.3f}_{lons.max():.3f}"
+        f"_{res_deg}_{len(lats)}".encode()).hexdigest()[:16]
+    cache = Path(cache_dir) / f"relief_{key}.json"
+    if cache.exists():
+        try:
+            return np.array(json.loads(cache.read_text()))
+        except Exception:
+            pass
+    elev = _fetch_elevations(lats, lons)
+    # Spatial neighbourhood via KDTree on projected km — robust to grid alignment
+    # / float rounding (the exact-coordinate lookup silently missed neighbours).
+    from scipy.spatial import cKDTree
+    coslat = np.cos(np.radians(np.nanmean(lats)))
+    xy = np.column_stack([lons * 111.0 * coslat, lats * 111.0])
+    tree = cKDTree(xy)
+    radius_km = res_deg * 111.0 * 1.8   # ~the 8-neighbour ring
+    relief = np.zeros(len(lats))
+    for i in range(len(lats)):
+        nb = tree.query_ball_point(xy[i], radius_km)
+        vals = elev[nb]
+        vals = vals[np.isfinite(vals)]
+        relief[i] = float(np.ptp(vals)) if len(vals) >= 2 else 0.0
+    try:
+        cache.write_text(json.dumps(relief.tolist()))
+    except Exception:
+        pass
+    return relief
+
+
+def relief_factor(relief_m, r0: float = 40.0, r1: float = 300.0) -> np.ndarray:
+    """Terrain gate in [0,1] from local relief (m): ~0 on flat ground (relief <
+    ~40 m, e.g. Florida / the Plains), ramping to 1 by ~300 m of local relief."""
+    return np.clip((np.asarray(relief_m, float) - r0) / (r1 - r0), 0.0, 1.0)

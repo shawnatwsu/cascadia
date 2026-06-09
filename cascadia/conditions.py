@@ -134,11 +134,17 @@ def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
     cells["quake_mag"] = 0.0   # no per-cell aftershock layer in the broad nowcast
     inv = LandslideInventory(cfg).fetch()
     cells["ls_susceptibility"] = _landslide_susceptibility(cells, inv)
+    # Terrain gate: landslides need relief. Inventory density alone is biased by
+    # reporting (flat Florida has logged points); multiply by a local-relief gate
+    # so flat, slide-free terrain reads ~0 regardless of rain. (Coarse-grid
+    # equivalent of the per-parcel DEM slope gate.)
     try:
-        from .sources.elevation import cell_slopes
-        cells["slope_deg"] = cell_slopes(cells, cfg.cache_dir, res)
-    except Exception:
-        pass
+        from .sources.elevation import cell_relief, relief_factor
+        rf = relief_factor(cell_relief(cells, cfg.cache_dir, res))
+        cells["ls_susceptibility"] = cells["ls_susceptibility"] * rf
+        log(f"landslide terrain gate: {(rf > 0.1).mean():.0%} of cells have relief")
+    except Exception as e:
+        log(f"(relief gate skipped: {e})")
     log(f"priors: {len(cat)} quakes, {len(inv)} landslides")
 
     # --- observed fire + downwind smoke transport ------------------------
