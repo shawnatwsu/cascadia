@@ -25,6 +25,25 @@ NEUTRAL_FLOW = 0.15   # fallback when no nearby gage exists
 _GAGE_CACHE: dict = {}
 
 
+def control_date(ev_date, mode: str, rng, lo, hi):
+    """Pick a matched non-event date for an event.
+
+    - "shifted"     : ±60–300 days (easy; control often lands in another season).
+    - "same_season" : ±~1 year, SAME calendar window in a different year — removes
+                      the season confound so the score reflects event-vs-non-event
+                      discrimination, not wet-season-vs-dry-season.
+    """
+    ev_date = pd.Timestamp(ev_date)
+    if mode == "same_season":
+        for base in (-365, 365, -730, 730):
+            c = ev_date + pd.Timedelta(days=base + int(rng.integers(-14, 15)))
+            if lo <= c <= hi:
+                return c
+        return min(max(ev_date - pd.Timedelta(days=365), lo), hi)
+    off = int(rng.integers(60, 300)) * (1 if rng.random() < 0.5 else -1)
+    return min(max(ev_date + pd.Timedelta(days=off), lo), hi)
+
+
 def _nearest_gage(lat: float, lon: float, config: Config, box: float = 0.4):
     """Nearest active NWIS stream gage reporting daily discharge, within `box` deg."""
     import requests
@@ -229,7 +248,8 @@ def _render_leadtime(curve: dict, out_path):
 
 def scaled_flood_hindcast(years=(2018, 2019, 2020, 2021), n: int = 100,
                           out_path: str | Path = "cascadia_flood_performance.png",
-                          throttle_s: float = 0.8, verbose: bool = True) -> dict:
+                          throttle_s: float = 0.8, control_mode: str = "shifted",
+                          verbose: bool = True) -> dict:
     from sklearn.metrics import roc_auc_score, roc_curve
     from .sources.storm_events import sample_events
     cfg = Config.load()
@@ -246,8 +266,7 @@ def scaled_flood_hindcast(years=(2018, 2019, 2020, 2021), n: int = 100,
     rows = []
     for i, e in ev.iterrows():
         p_event = flood_prob_at(e["lat"], e["lon"], e["date"], cfg)
-        off = int(rng.integers(60, 300)) * (1 if rng.random() < 0.5 else -1)
-        cdate = min(max(e["date"] + pd.Timedelta(days=off), lo_date), hi_date)
+        cdate = control_date(e["date"], control_mode, rng, lo_date, hi_date)
         p_ctrl = flood_prob_at(e["lat"], e["lon"], cdate, cfg)
         rows.append({"prob": p_event, "label": 1, "type": e["type"]})
         rows.append({"prob": p_ctrl, "label": 0, "type": e["type"]})
@@ -284,9 +303,9 @@ def scaled_flood_hindcast(years=(2018, 2019, 2020, 2021), n: int = 100,
                           "roc_auc": float(roc_auc_score(sub["label"], sub["prob"]))}
     res = {"n_events": int((y == 1).sum()), "n_nonevents": int((y == 0).sum()),
            "roc_auc": auc, "auc_ci": (auc_lo, auc_hi),
-           "threshold": thr_opt, "hit_rate": hit,
+           "threshold": thr_opt, "hit_rate": hit, "control_mode": control_mode,
            "false_alarm_rate": fa, "by_type": by_type}
-    log(f"\n=== SCALED FLOOD HINDCAST (independent NWS Storm Events labels) ===")
+    log(f"\n=== SCALED FLOOD HINDCAST (NWS labels; control={control_mode}) ===")
     log(f"  events={res['n_events']}  non-events={res['n_nonevents']}")
     log(f"  ROC-AUC = {auc:.3f}  (95% CI [{auc_lo:.3f}, {auc_hi:.3f}], threshold-free)")
     log(f"  at operating point (thr={thr_opt:.2f}): HIT RATE {hit:.0%}, "

@@ -158,11 +158,12 @@ def cmd_hindcast(args: list[str]) -> None:
 def cmd_performance(args: list[str]) -> None:
     """Scaled flood hindcast on independent NWS Storm Events -> defensible claim."""
     from cascadia.validation_scaled import scaled_flood_hindcast
-    n = int(args[0]) if args and args[0].isdigit() else 100
-    print(f"Scoring {n} real NWS flood events + {n} matched non-events with the "
-          "calibrated flood model (first run downloads event files + queries ERA5)…\n")
-    out = _outfile("flood_performance.png")
-    res = scaled_flood_hindcast(n=n, out_path=out, verbose=True)
+    n = next((int(a) for a in args if a.isdigit()), 100)
+    mode = "same_season" if "sameseason" in args else "shifted"
+    print(f"Scoring {n} real NWS flood events + {n} matched non-events (control={mode}) "
+          "with the calibrated flood model (first run downloads event files + queries ERA5)…\n")
+    out = _outfile(f"flood_performance{'_sameseason' if mode=='same_season' else ''}.png")
+    res = scaled_flood_hindcast(n=n, out_path=out, control_mode=mode, verbose=True)
     print(f"\n✓ Defensible claim: flags {res['hit_rate']:.0%} of real floods at a "
           f"{res['false_alarm_rate']:.0%} false-alarm rate (ROC-AUC {res['roc_auc']:.3f}).")
     _announce(out)
@@ -181,11 +182,12 @@ def cmd_leadtime(args: list[str]) -> None:
 def cmd_fireperf(args: list[str]) -> None:
     """Scaled wildfire hindcast on independent NWS Storm Events -> AUC."""
     from cascadia.validation_fire import fire_event_hindcast
-    n = int(args[0]) if args and args[0].isdigit() else 80
-    print(f"Scoring {n} real NWS wildfires + {n} matched non-events with the engine's "
-          "GRIDMET fire-danger mapping (first run pulls GRIDMET point series)…\n")
-    out = _outfile("fire_performance.png")
-    res = fire_event_hindcast(n=n, out_path=out, verbose=True)
+    n = next((int(a) for a in args if a.isdigit()), 80)
+    mode = "same_season" if "sameseason" in args else "shifted"
+    print(f"Scoring {n} real FIRMS fires + {n} matched non-events (control={mode}) with the "
+          "engine's GRIDMET fire-danger mapping (first run pulls GRIDMET point series)…\n")
+    out = _outfile(f"fire_performance{'_sameseason' if mode=='same_season' else ''}.png")
+    res = fire_event_hindcast(n=n, out_path=out, control_mode=mode, verbose=True)
     print(f"\n✓ Defensible claim: flags {res['hit_rate']:.0%} of real wildfires at a "
           f"{res['false_alarm_rate']:.0%} false-alarm rate (ROC-AUC {res['roc_auc']:.3f}).")
     _announce(out)

@@ -27,7 +27,7 @@ The name is a double meaning: the **Cascadia** bioregion (Pacific Northwest)
 - **Any scale** — a single **address**, an **NCA5 region** (Northwest, Southeast, …), or the **whole CONUS** at 4 km.
 - **Expected impact** — not just probability, but **expected people affected** (hazard × population).
 - **Three forecast horizons** — a **7‑day** live forecast, a **weeks 2–6** sub‑seasonal outlook, and an **ENSO‑driven seasonal** outlook (with a real ENSO‑forecast ML model).
-- **Measured skill, stated honestly** — not just reliability diagrams, but **independent‑event detection scores**: the flood model is tested on **100 real NWS floods** (ROC‑AUC **0.715**), the wildfire leaf on **80 satellite‑observed fires** (ROC‑AUC **0.938**), the fire→smoke **cascade** against EPA PM2.5 — each with bootstrap confidence intervals, matched non‑events, and labels *independent* of training. Where skill is weak (the seasonal outlook), we say so.
+- **Measured skill, stated honestly** — not just reliability diagrams, but **independent‑event detection scores**: the flood model is tested on **100 real NWS floods** (ROC‑AUC **0.715**) and the wildfire leaf on **80 satellite‑observed fires** (ROC‑AUC **0.938**), each with bootstrap CIs, matched non‑events, and labels *independent* of training. And where the evidence *doesn't* hold up — the seasonal ENSO outlook (weak), and the fire→smoke **cascade skill gain** (not established once we bootstrap by episode) — we say so plainly instead of cherry‑picking.
 
 ---
 
@@ -62,7 +62,7 @@ The name is a double meaning: the **Cascadia** bioregion (Pacific Northwest)
 
 ![Flood calibration](docs/flood_calibration.png)
 
-**A defensible performance number — on 100 *independent* flood events** (`run.ps1 performance`) — beyond anecdotes, we score the **full operational flood model** (ERA5 precip + soil + real antecedent streamflow from the nearest USGS gage) on **100 real NWS Storm Events floods (2018–2021) + 100 matched non‑events** (same locations, shifted calm dates). Labels come from the NWS event database — *independent* of the gage‑exceedance labels the model was trained on. Result: **ROC‑AUC 0.715, 95% bootstrap CI [0.64, 0.78]** (excludes 0.5 — real, significant discrimination), flagging **56% of real floods at a 22% false‑alarm rate**. Riverine floods (the model's design target) score higher (AUC 0.74) than flash floods (0.70), as expected for a daily‑resolution model:
+**A defensible performance number — on 100 *independent* flood events** (`run.ps1 performance`) — beyond anecdotes, we score the **full operational flood model** (ERA5 precip + soil + real antecedent streamflow from the nearest USGS gage) on **100 real NWS Storm Events floods (2018–2021) + 100 matched non‑events**. Labels come from the NWS event database — *independent* of the gage‑exceedance labels the model was trained on. Result: **ROC‑AUC 0.715, 95% bootstrap CI [0.64, 0.78]** (excludes 0.5 — real, significant discrimination), flagging **56% of real floods at a 22% false‑alarm rate**. Crucially, it survives the **harder same‑season control** (`run.ps1 performance sameseason`: same location, ±1 year → **AUC 0.73**, *unchanged*) — so it's discriminating floods, **not just wet‑season vs dry‑season**. Riverine floods (the model's design target) score higher (AUC 0.74) than flash floods (0.70), as expected for a daily‑resolution model:
 
 ![Flood performance on independent events](docs/flood_performance.png)
 
@@ -70,11 +70,11 @@ The name is a double meaning: the **Cascadia** bioregion (Pacific Northwest)
 
 ![Flood lead-time skill](docs/flood_leadtime.png)
 
-**Wildfire holds up too — on independent satellite fires** (`run.ps1 fireperf`) — the wildfire leaf (GRIDMET NFDRS Burning Index + Energy Release Component + 100‑hr fuel moisture) is scored against **80 real NASA FIRMS fire location‑days + 80 matched non‑events**. FIRMS (satellite thermal) is *independent* of GRIDMET (reanalysis weather), so this is a genuine verification: **ROC‑AUC 0.938, 95% CI [0.90, 0.97]**, flagging **92% of real wildfires at a 15% false‑alarm rate**. (Fire danger is *diagnostic* of fire‑prone conditions, not a multi‑day‑ahead forecast — and it's seasonal, so this is the discrimination, not a free lunch.)
+**Wildfire — on independent satellite fires, with the seasonality honestly removed** (`run.ps1 fireperf`) — the wildfire leaf (GRIDMET NFDRS Burning Index + Energy Release Component + 100‑hr fuel moisture) is scored against **80 real NASA FIRMS fire location‑days + 80 matched non‑events**. FIRMS (satellite thermal) is *independent* of GRIDMET (reanalysis weather). Against shifted‑date controls it scores **ROC‑AUC 0.938** — but fire danger is *intensely seasonal*, so much of that is just fire‑season‑vs‑winter. Under the **honest same‑season control** (`run.ps1 fireperf sameseason`: same place, ±1 year → discriminate the *actual* fire day from a typical fire‑season day), it drops to **ROC‑AUC 0.712, 95% CI [0.63, 0.79]** — still clearly skillful, but **~0.23 of the headline was seasonality**. We report both, and treat **0.71 as the real number**. (Fire danger is *diagnostic* of fire‑prone conditions, not a multi‑day‑ahead forecast.)
 
 ![Wildfire performance on independent FIRMS fires](docs/fire_performance.png)
 
-**The cascade *adds skill* — significantly** (`run.ps1 skill`) — validated against EPA‑measured PM2.5 across **4 smoke episodes** (2018–2023, West + cross‑border Canadian smoke; n = 1,131 monitor‑days). Modeling the fire→smoke **downwind transport** (the cascade) ~doubles the correlation vs fire **proximity** (treating smoke as independent): Δr = +0.063, **95% bootstrap CI [+0.008, +0.117]** (excludes zero). Direct evidence for the project's central claim:
+**Does the cascade add skill? An honest negative — so far** (`run.ps1 skill`) — we stress‑tested the project's *central hypothesis*: that modeling fire→smoke **downwind transport** beats treating smoke as independent fire **proximity**. Tested against EPA PM2.5 across **11 major smoke episodes (2017–2023; n = 2,274 monitor‑days)**, transport only *edges* proximity when pooled (Δr = +0.028) — but at the **episode level it wins in just 6 of 11 episodes**, and an **episode‑cluster bootstrap 95% CI of [−0.18, +0.19] spans zero**. An earlier "significant" version (Δr +0.063, CI [+0.008, +0.117]) turned out to be an artifact of **only 4 episodes + an i.i.d. monitor‑day bootstrap that ignored within‑episode autocorrelation** — the kind of mistake this very test was built to catch. **The cascade is modeled and explainable, but a skill *gain* over the naive baseline is not yet established** (the transport proxy is crude: single‑day wind alignment). We show this rather than bury it:
 
 ![Fire→smoke cascade validation](docs/cascade_skill.png)
 
@@ -197,6 +197,14 @@ open feeds ─▶ spatial grid ─▶ cross-sector ─▶ per-hazard ─▶ CASC
 - **Matched non‑events.** Every real event is paired with the *same location on a
   shifted calm date*, so the metric reflects discrimination (event vs non‑event),
   not just "did something bad happen in a risky place."
+- **Same‑season controls (the hard test).** Because a randomly‑shifted control can
+  land in a different season, we *also* run a control at the **same location ±1
+  year** (same calendar window). This strips out the season confound — flood skill
+  survives it (0.71→0.73), wildfire's drops honestly (0.94→0.71).
+- **Cluster bootstrap for correlated data.** The cascade test resamples whole
+  *episodes*, not monitor‑days, because days within one smoke event are highly
+  autocorrelated — the effective sample is the episode. (This is what overturned
+  an earlier, overstated "significant" cascade result.)
 - **Out‑of‑fold / out‑of‑distribution.** The flood model's in‑sample skill is
   measured with **GroupKFold by gage** (no spatial leakage); its *headline* claim
   is the harder, fully independent NWS event test.
@@ -209,10 +217,10 @@ open feeds ─▶ spatial grid ─▶ cross-sector ─▶ per-hazard ─▶ CASC
 | Question it answers | Command | Data & method | Sample | Result | Honest caveat |
 |---|---|---|---|---|---|
 | **Are the flood probabilities calibrated?** | `skill` | Out‑of‑fold (GroupKFold by gage), isotonic | 11.5k pt‑dates, 22 gages | ROC‑AUC **0.95**, Brier **0.055**, BSS **+0.51**, reliability on diagonal | In‑*distribution* (gages resemble training) |
-| **Does it catch *real, independent* floods?** | `performance` | Full model (incl. real USGS streamflow) vs **NWS Storm Events** + matched non‑events | 100 floods + 100 non‑events | ROC‑AUC **0.715** (95% CI **0.64–0.78**); **56%** hit @ **22%** false alarm | Daily ~5 km grid under‑resolves flash floods (riverine 0.74 > flash 0.70) |
+| **Does it catch *real, independent* floods?** | `performance` | Full model (incl. real USGS streamflow) vs **NWS Storm Events** + matched non‑events | 100 floods + 100 non‑events | ROC‑AUC **0.715** (CI **0.64–0.78**); **robust to same‑season control: 0.73** | Daily ~5 km grid under‑resolves flash floods (riverine 0.74 > flash 0.70) |
 | **How many days ahead is the flood signal there?** | `leadtime` | Same events scored as if issued *L* days early (forward 7‑day window) | 80 events × 7 leads | AUC **≈0.66** to **7 days**, decays to **0.54** by 14 days | ERA5 = a *perfect* precip forecast → this is *potential* lead skill |
-| **Does the wildfire leaf track real fire?** | `fireperf` | GRIDMET NFDRS danger vs **FIRMS** satellite fires + matched non‑events | 80 fire‑days + 80 non‑events | ROC‑AUC **0.938** (95% CI **0.90–0.97**); **92%** hit @ **15%** false alarm | Danger is *diagnostic*, not a multi‑day forecast; seasonal |
-| **Does the cascade *add* skill?** *(the core claim)* | `skill` | Fire→smoke **transport** vs fire **proximity**, vs EPA PM2.5 | 1,131 monitor‑days, 4 episodes | Δr **+0.063** (95% CI **+0.008–+0.117**, excludes 0) | Correlational; 4 episodes |
+| **Does the wildfire leaf track real fire?** | `fireperf` | GRIDMET NFDRS danger vs **FIRMS** satellite fires + matched non‑events | 80 fire‑days + 80 non‑events | ROC‑AUC **0.938** shifted, **0.712** (CI 0.63–0.79) **same‑season** ← honest number | Much of 0.94 is seasonal; danger is *diagnostic*, not a forecast |
+| **Does the cascade *add* skill?** *(the core hypothesis)* | `skill` | Fire→smoke **transport** vs fire **proximity**, vs EPA PM2.5; episode‑cluster bootstrap | 2,274 monitor‑days, **11 episodes** | Δr **+0.028**; wins **6/11** episodes; cluster 95% CI **[−0.18, +0.19]** | **Not established** — crude single‑day transport proxy; honest negative |
 | **Can it forecast ENSO itself?** | `skill` | Gradient‑boosting ONI forecast vs persistence | 1950– monthly | Beats persistence **~30%** (RMSE) at +1/+2/+3 mo | A single climate index |
 | **Does ENSO usefully predict US seasons?** | `skill` | ENSO → regional climate vs NCEI observed | 1950– | r≈0.4 (SE/S. Plains winter precip), **RPSS≈0** | **Weak** US predictor — labeled as such, not hidden |
 | **Would it have flagged famous disasters?** | `hindcast` | Historical replay at real addresses vs calm control | 5 events | **5/5** behave correctly (high at event, low at control) | Anecdotal sanity check, not a skill score |

@@ -24,7 +24,9 @@ probability). All are **research prototypes; defer to official agencies.**
   the training distribution; the event test is the harder, independent number.)
   **Lead‑time** (`run.ps1 leadtime`): skill (AUC ≈ 0.65–0.67) persists to the
   7‑day forecast horizon, then decays to ≈0.54 by 14 days as the event leaves the
-  window — leaving only antecedent soil/streamflow.
+  window — leaving only antecedent soil/streamflow. **Same‑season control**
+  (`run.ps1 performance sameseason`, same location ±1 yr): AUC **0.73** —
+  *unchanged*, so the skill is flood discrimination, not a season confound.
 - **Limitations:** gage‑exceedance ≠ damaging flood; ~5 km resolution; trained on
   a Pacific‑NW gage sample (national retrain pending); no pluvial/coastal flood.
 
@@ -48,13 +50,15 @@ probability). All are **research prototypes; defer to official agencies.**
   ignition‑limited score; observed fire dominates when present.
 - **Validation:** **independent‑event test** (`run.ps1 fireperf`): the danger
   mapping scored against **80 real NASA FIRMS satellite fire location‑days + 80
-  matched non‑events** (2018–2021) → **ROC‑AUC 0.938, 95% CI [0.90, 0.97]**;
-  **92% hit rate at 15% false alarm**. FIRMS (satellite) is independent of GRIDMET
-  (reanalysis). (Met‑only *occurrence* ML had ~no transferable skill — see
-  history — which is why the leaf uses established NFDRS indices instead.)
+  matched non‑events** (FIRMS is independent of GRIDMET reanalysis). Against
+  shifted‑date controls **ROC‑AUC 0.938 [0.90, 0.97]** — but fire danger is
+  intensely seasonal, so under the **honest same‑season control**
+  (`run.ps1 fireperf sameseason`, same place ±1 yr) it drops to **ROC‑AUC 0.712
+  [0.63, 0.79]**: still skillful, but ~0.23 of the headline was seasonality.
+  **Treat 0.71 as the real number.** (Met‑only *occurrence* ML had ~no
+  transferable skill — see history — hence the NFDRS‑index approach.)
 - **Limitations:** danger is **diagnostic, not a multi‑day forecast**; danger ≠
-  occurrence (ignition still required); no ignition or fuel‑type model; the AUC
-  reflects discrimination during/around fire season, not lead‑time skill.
+  occurrence (ignition still required); no ignition or fuel‑type model.
 
 ## Landslide
 - **Kind:** relative index ⚠️
@@ -76,15 +80,21 @@ probability). All are **research prototypes; defer to official agencies.**
 - **Limitations:** no acclimatization/vulnerability; not a health forecast.
 
 ## Wildfire smoke
-- **Kind:** relative index ⚠️ — **but the cascade is validated** ✅
+- **Kind:** relative index ⚠️ — **cascade skill gain: not yet established** ⚠️
 - **Intended use:** downwind smoke / air‑quality potential.
 - **Inputs:** FIRMS fire radiative power, wind direction.
 - **Method:** plume‑transport proxy — fire carried downwind toward the cell.
-- **Validation:** the **fire→smoke cascade adds significant skill** vs an
-  independent (proximity) baseline against EPA‑observed PM2.5 across 4 episodes
-  (Δr = +0.063, 95% bootstrap CI [+0.008, +0.117]; `run.ps1 skill`).
-- **Limitations:** same‑day transport proxy (no multi‑day dispersion/injection);
-  absolute level is a relative index, not calibrated µg/m³.
+- **Validation (honest negative):** we tested whether modeling downwind
+  **transport** beats a naive fire‑**proximity** baseline against EPA PM2.5 across
+  **11 major smoke episodes (2017–2023, n = 2,274 monitor‑days)**. Pooled Δr =
+  **+0.028**, but transport wins in only **6/11 episodes** and the **episode‑cluster
+  bootstrap 95% CI [−0.18, +0.19] spans zero** (`run.ps1 skill`). An earlier
+  4‑episode result (Δr +0.063, CI [+0.008, +0.117]) was inflated by an i.i.d.
+  monitor‑day bootstrap that ignored within‑episode autocorrelation. **A skill gain
+  from the cascade is not demonstrated.**
+- **Limitations:** same‑day transport proxy (no multi‑day dispersion/injection) —
+  likely too crude to beat proximity; absolute level is a relative index, not
+  calibrated µg/m³. Improving the transport physics is the path to a fair retest.
 
 ---
 

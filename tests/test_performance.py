@@ -37,6 +37,24 @@ def test_window_feats_and_flow_asof():
     assert vs._flow_asof(None, issue) == vs.NEUTRAL_FLOW
 
 
+def test_control_date_modes():
+    rng = np.random.default_rng(0)
+    lo, hi = pd.Timestamp("2000-01-01"), pd.Timestamp("2025-01-01")
+    ev = pd.Timestamp("2020-08-15")
+    # same_season: within ~2 weeks of the same day-of-year, ~1 year away
+    for _ in range(20):
+        c = vs.control_date(ev, "same_season", rng, lo, hi)
+        assert lo <= c <= hi
+        doy_gap = min(abs(c.dayofyear - ev.dayofyear),
+                      365 - abs(c.dayofyear - ev.dayofyear))
+        assert doy_gap <= 20, f"same-season control drifted seasons: {c}"
+        assert abs((c - ev).days) >= 300, "same-season control too close to event"
+    # shifted: 60–300 days away, can cross seasons
+    for _ in range(20):
+        c = vs.control_date(ev, "shifted", rng, lo, hi)
+        assert 60 <= abs((c - ev).days) <= 300
+
+
 def test_fire_danger_formula_monotonic(monkeypatch):
     """Drier/hotter GRIDMET inputs must yield higher danger, capped at 0.6."""
     from cascadia.config import Config

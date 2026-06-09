@@ -84,23 +84,24 @@ def fire_danger_at(lat: float, lon: float, date, config: Config) -> float:
 
 def fire_event_hindcast(years=(2018, 2019, 2020, 2021), n: int = 80,
                         out_path: str | Path = "cascadia_fire_performance.png",
-                        throttle_s: float = 0.2, verbose: bool = True) -> dict:
+                        throttle_s: float = 0.2, control_mode: str = "shifted",
+                        verbose: bool = True) -> dict:
     from sklearn.metrics import roc_auc_score, roc_curve
+    from .validation_scaled import control_date
     cfg = Config.load()
     log = (lambda *a: print(*a)) if verbose else (lambda *a: None)
     ev = sample_fire_events(cfg, years=years, n=n, seed=0, verbose=verbose)
     if ev.empty:
         raise RuntimeError("no FIRMS fire events sampled (needs FIRMS_MAP_KEY)")
     log(f"Sampled {len(ev)} real FIRMS fire location-days ({years[0]}-{years[-1]}). "
-        f"Scoring each + a matched control (same place, shifted date)…")
+        f"Scoring each + a matched control (control={control_mode})…")
     rng = np.random.default_rng(0)
     lo_date = pd.Timestamp("1979-06-01")
     hi_date = pd.Timestamp.utcnow().tz_localize(None) - pd.Timedelta(days=10)
     rows = []
     for i, e in ev.iterrows():
         p_event = fire_danger_at(e["lat"], e["lon"], e["date"], cfg)
-        off = int(rng.integers(60, 300)) * (1 if rng.random() < 0.5 else -1)
-        cdate = min(max(e["date"] + pd.Timedelta(days=off), lo_date), hi_date)
+        cdate = control_date(e["date"], control_mode, rng, lo_date, hi_date)
         p_ctrl = fire_danger_at(e["lat"], e["lon"], cdate, cfg)
         rows.append({"prob": p_event, "label": 1})
         rows.append({"prob": p_ctrl, "label": 0})
@@ -125,8 +126,8 @@ def fire_event_hindcast(years=(2018, 2019, 2020, 2021), n: int = 80,
     fa = float((pred & (y == 0)).sum() / max(1, (y == 0).sum()))
     res = {"n_events": int((y == 1).sum()), "n_nonevents": int((y == 0).sum()),
            "roc_auc": auc, "auc_ci": (auc_lo, auc_hi), "threshold": thr_opt,
-           "hit_rate": hit, "false_alarm_rate": fa}
-    log("\n=== WILDFIRE EVENT HINDCAST (independent FIRMS satellite labels) ===")
+           "hit_rate": hit, "false_alarm_rate": fa, "control_mode": control_mode}
+    log(f"\n=== WILDFIRE EVENT HINDCAST (FIRMS labels; control={control_mode}) ===")
     log(f"  events={res['n_events']}  non-events={res['n_nonevents']}")
     log(f"  ROC-AUC = {auc:.3f}  (95% CI [{auc_lo:.3f}, {auc_hi:.3f}])")
     log(f"  at thr={thr_opt:.3f}: HIT RATE {hit:.0%}, FALSE-ALARM RATE {fa:.0%}")
