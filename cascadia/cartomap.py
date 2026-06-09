@@ -153,7 +153,14 @@ def _panel(fig, ax, lons, lats, Z, col, value_label="probability over horizon",
         vmax = max(vmax, 1e-4)
         edges = _bin_edges(vmax)
         base = plt.get_cmap(HAZARD_CMAPS.get(col, "YlOrRd"))
-        cmap = ListedColormap(base(np.linspace(0.15, 1.0, len(edges) - 1)))
+        # The lowest bin [0, edge1) is "~zero / no signal" -> render WHITE (no
+        # colorization), so the map isn't washed with a pale tint everywhere and
+        # the actual signal stands out. Remaining bins use the hazard colormap.
+        if len(edges) >= 3:
+            body = base(np.linspace(0.15, 1.0, len(edges) - 2))
+            cmap = ListedColormap([(1.0, 1.0, 1.0, 1.0)] + list(body))
+        else:  # too few bins to spare one for "zero"
+            cmap = ListedColormap(base(np.linspace(0.15, 1.0, len(edges) - 1)))
     norm = BoundaryNorm(edges, cmap.N)
 
     mesh = ax.pcolormesh(lons, lats, Z, cmap=cmap, norm=norm,
