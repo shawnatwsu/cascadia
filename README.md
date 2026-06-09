@@ -276,6 +276,7 @@ run.py / run.ps1 / run.bat   one-command launcher
 
 ## Honest limitations
 
+- **Six hazards, not all of them.** Cascadia covers flood, earthquake, wildfire, landslide, heat, and wildfire‑smoke. It does **not** cover **tropical cyclones/hurricanes, tornadoes, severe‑thunderstorm wind/hail, storm surge, or winter storms** — those are well served by NHC and the SPC, and are a possible future direction (see roadmap), not a current claim.
 - **Research prototype.** Not validated for operational use; defer to official agencies.
 - **Calibrated vs. index:** only **flood** (and the **earthquake** seismic prior) are calibrated probabilities. **Landslide / wildfire / heat / smoke are relative 0–1 hazard indices** — area‑scale danger, *not* calibrated odds of occurrence. Reports flag them with `*`.
 - Maps are **~4–5 km cells**; the parcel report refines landslide with a local DEM slope, but other hazards remain area‑scale.
@@ -290,6 +291,7 @@ run.py / run.ps1 / run.bat   one-command launcher
 - Full SST fields (OISST) + learned ENSO→regional teleconnections
 - Sentinel‑1 InSAR / soil moisture; tsunami + volcano (lahar) cascades
 - Gridded forecast (NDFD/GFS) for CONUS‑wide *forward* forecasts; hosted demo
+- **More hazards:** tropical cyclone (NHC track/wind) and severe‑convective / tornado (SPC outlooks) leaves — the two biggest current gaps
 
 ---
 
