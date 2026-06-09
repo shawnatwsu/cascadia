@@ -238,10 +238,11 @@ def _render(df, res, boot_clu, deltas_ev, out_path):
     fig.suptitle(f"Cascadia — fire→smoke cascade vs EPA observed PM2.5  "
                  f"({res['n_events']} smoke episodes, n={res['n']} monitor-days)\n{head}",
                  fontsize=12, weight="bold")
-    fig.text(0.5, -0.02, "Honest stats: with only ~4 episodes the effective sample is the "
-             "EPISODE, not the monitor-day. We headline the per-episode sign consistency and "
-             "an episode-cluster bootstrap (which respects within-episode autocorrelation); "
-             "the naive monitor-day CI is shown for transparency but is autocorrelation-inflated.",
+    fig.text(0.5, -0.02, f"Honest stats: monitor-days within one episode are highly "
+             f"autocorrelated, so the effective sample is the EPISODE ({res['n_ev_valid']} of "
+             "them), not the monitor-day. We headline the per-episode sign consistency and an "
+             "episode-cluster bootstrap (which respects that autocorrelation); the naive "
+             "monitor-day CI is shown for transparency but is autocorrelation-inflated.",
              ha="center", va="top", fontsize=8.3, color="0.35", wrap=True)
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close(fig)
