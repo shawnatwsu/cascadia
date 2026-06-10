@@ -81,7 +81,7 @@ Maps land in `outputs/` (the full path prints each run). Smoke + live fire need 
 | `run.ps1 skill` / `validate` / `hindcast` | Calibration suite / disaster replays |
 | `run.ps1 serve` | Interactive Leaflet dashboard |
 
-Regions: `conus`, `pnw`, `california`, and the NCA5 regions (`northwest`, `southeast`, …). Add `sameseason` to `performance`/`fireperf` for the harder control.
+Regions: `conus`, `pnw`, the NCA5 regions (`northwest`, `southeast`, …), or **any contiguous‑US state** (`texas`, `new_york`, `tx`). Add `sameseason` to `performance`/`fireperf` for the harder control.
 
 ## How it works
 

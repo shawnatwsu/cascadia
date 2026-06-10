@@ -103,6 +103,68 @@ def mask_region(cells, region_key: str):
     return cells[keep].reset_index(drop=True)
 
 
+def _norm(s: str) -> str:
+    return s.strip().lower().replace("_", " ").replace("-", " ")
+
+
+@lru_cache(maxsize=1)
+def _state_lookup() -> dict:
+    """{normalized key -> proper state name} for the 48 CONUS states + DC.
+    Accepts names ('texas', 'new_york') and USPS codes ('tx', 'ny')."""
+    codes = {"alabama": "al", "arizona": "az", "arkansas": "ar", "california": "ca",
+             "colorado": "co", "connecticut": "ct", "delaware": "de",
+             "district of columbia": "dc", "florida": "fl", "georgia": "ga",
+             "idaho": "id", "illinois": "il", "indiana": "in", "iowa": "ia",
+             "kansas": "ks", "kentucky": "ky", "louisiana": "la", "maine": "me",
+             "maryland": "md", "massachusetts": "ma", "michigan": "mi",
+             "minnesota": "mn", "mississippi": "ms", "missouri": "mo", "montana": "mt",
+             "nebraska": "ne", "nevada": "nv", "new hampshire": "nh", "new jersey": "nj",
+             "new mexico": "nm", "new york": "ny", "north carolina": "nc",
+             "north dakota": "nd", "ohio": "oh", "oklahoma": "ok", "oregon": "or",
+             "pennsylvania": "pa", "rhode island": "ri", "south carolina": "sc",
+             "south dakota": "sd", "tennessee": "tn", "texas": "tx", "utah": "ut",
+             "vermont": "vt", "virginia": "va", "washington": "wa",
+             "west virginia": "wv", "wisconsin": "wi", "wyoming": "wy"}
+    out = {}
+    for name in state_geoms():           # only CONUS states (AK/HI excluded)
+        key = _norm(name)
+        out[key] = name
+        if key in codes:
+            out[codes[key]] = name
+    return out
+
+
+def resolve_state(key: str) -> str | None:
+    """Proper CONUS state name for a user key ('texas', 'tx', 'New Mexico'), else None."""
+    return _state_lookup().get(_norm(key))
+
+
+def state_geometry(name: str):
+    return state_geoms()[name]
+
+
+def state_bbox(name: str, pad: float = 0.3) -> tuple:
+    minx, miny, maxx, maxy = state_geoms()[name].bounds
+    return (minx - pad, miny - pad, maxx + pad, maxy + pad)
+
+
+def mask_state(cells, name: str):
+    """Filter cells to a single state's polygon (clean borders)."""
+    if cells.empty:
+        return cells
+    import shapely
+    geom = state_geoms()[name]
+    lons = cells["lon"].to_numpy(); lats = cells["lat"].to_numpy()
+    try:
+        keep = np.asarray(shapely.contains_xy(geom, lons, lats), dtype=bool)
+    except Exception:
+        from shapely.geometry import Point
+        from shapely.prepared import prep
+        pg = prep(geom)
+        keep = np.array([pg.contains(Point(x, y)) for x, y in zip(lons, lats)])
+    return cells[keep].reset_index(drop=True)
+
+
 @lru_cache(maxsize=1)
 def conus_union():
     from shapely.ops import unary_union

@@ -126,9 +126,10 @@ def cmd_parcel(args: list[str]) -> None:
 
 def cmd_conditions(args: list[str]) -> None:
     from cascadia.conditions import conditions_map, region_keys
-    region = (args[0].lower() if args else "pnw")
+    region = ("_".join(a.lower() for a in args) if args else "pnw")
     if region not in region_keys():
-        print(f"Unknown region '{region}'. Choices: {', '.join(region_keys())}")
+        print(f"Unknown region '{region}'. Choices: conus, pnw, california, the NCA5 "
+              f"regions, or any US state (e.g. texas, new_york, tx).")
         return
     print(f"Building GRIDMET 4km hazard-conditions nowcast for {region.upper()}…\n")
     _, out = conditions_map(region, out_path=_outfile(f"conditions_{region}.png"))
@@ -136,7 +137,7 @@ def cmd_conditions(args: list[str]) -> None:
 
 
 def cmd_impact(args: list[str]) -> None:
-    region = (args[0].lower() if args else "conus")
+    region = ("_".join(a.lower() for a in args) if args else "conus")
     from cascadia.impact import impact_map
     print(f"Building expected-IMPACT map for {region.upper()} "
           "(hazard probability x population)…\n")
@@ -231,9 +232,10 @@ def cmd_seasonal(args: list[str]) -> None:
 def cmd_subseasonal(args: list[str]) -> None:
     from cascadia.subseasonal import subseasonal_outlook
     from cascadia.conditions import region_keys
-    region = (args[0].lower() if args else "pnw")
+    region = ("_".join(a.lower() for a in args) if args else "pnw")
     if region not in region_keys():
-        print(f"Unknown region '{region}'. Choices: {', '.join(region_keys())}")
+        print(f"Unknown region '{region}'. Choices: conus, pnw, california, the NCA5 "
+              f"regions, or any US state (e.g. texas, new_york, tx).")
         return
     print(f"Building weeks 2-6 sub-seasonal outlook for {region.upper()}…\n")
     _, out = subseasonal_outlook(region, out_path=_outfile(f"subseasonal_{region}.png"))

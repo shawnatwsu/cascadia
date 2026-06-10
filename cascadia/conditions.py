@@ -53,13 +53,21 @@ def _resolve_region(region_key: str, resolution_deg: float | None = None):
                 f"{geo.NCA5_NAMES[region_key]} conditions",
                 lambda c, k=region_key: geo.mask_region(c, k),
                 geo.region_states(region_key))
+    # any contiguous-US state (by name or USPS code; Alaska/Hawaii excluded)
+    state = geo.resolve_state(region_key)
+    if state:
+        return (geo.state_bbox(state, pad=0.3), resolution_deg or 0.1, 2,
+                f"{state} conditions",
+                lambda c, s=state: geo.mask_state(c, s),
+                (geo.state_geometry(state),))
     raise ValueError(f"unknown region '{region_key}'. "
-                     f"options: {list(REGIONS) + list(geo.NCA5_REGIONS)}")
+                     f"options: {list(REGIONS) + list(geo.NCA5_REGIONS)} or any US state")
 
 
 def region_keys() -> list:
     from . import geo
-    return list(REGIONS) + list(geo.NCA5_REGIONS)
+    states = sorted({geo._norm(n).replace(" ", "_") for n in geo.state_geoms()})
+    return list(REGIONS) + list(geo.NCA5_REGIONS) + states
 
 
 def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
