@@ -70,6 +70,8 @@ Maps land in `outputs/` (the full path prints each run). Smoke + live fire need 
 
 ## Commands
 
+> On **PowerShell** prefix with `.\` (e.g. `.\run.ps1 explainer texas`); `run.bat` works by double‑click; any OS: `python run.py <command>`.
+
 | Command | What you get |
 |---|---|
 | `run.ps1` | Live **7-day forecast** map |
