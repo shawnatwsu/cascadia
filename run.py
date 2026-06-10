@@ -145,6 +145,23 @@ def cmd_impact(args: list[str]) -> None:
     _announce(out)
 
 
+def cmd_explainer(args: list[str]) -> None:
+    """Heat 'at any scale' explainer: CONUS -> region -> state -> parcel,
+    nowcast + 7-day forecast. `run.ps1 explainer texas` (default: california)."""
+    from cascadia.explainer import make_explainer
+    from cascadia import geo
+    key = ("_".join(a.lower() for a in args) if args else "california")
+    state = geo.resolve_state(key)
+    if not state:
+        print(f"'{key}' is not a contiguous-US state. Try: texas, california, florida, …")
+        return
+    tag = state.lower().replace(" ", "")
+    print(f"Building the HEAT multi-scale explainer for {state} "
+          "(needs the CONUS nowcast cached; first run also fetches Open-Meteo)…\n")
+    out = make_explainer(key, out_path=_outfile(f"heat_explainer_{tag}.png"))
+    _announce(out)
+
+
 def cmd_hindcast(args: list[str]) -> None:
     """Would the product have flagged real hazard events? (address hindcast)."""
     from cascadia.parcel_hindcast import run_hindcast, render_hindcast
@@ -253,6 +270,7 @@ COMMANDS = {
     "subseasonal": cmd_subseasonal,
     "seasonal": cmd_seasonal,
     "impact": cmd_impact,
+    "explainer": cmd_explainer,
     "skill": cmd_skill,
     "hindcast": cmd_hindcast,
     "performance": cmd_performance,

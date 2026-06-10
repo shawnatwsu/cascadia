@@ -77,6 +77,7 @@ Maps land in `outputs/` (the full path prints each run). Smoke + live fire need 
 | `run.ps1 impact <region>` | **Expected people affected** |
 | `run.ps1 seasonal` / `subseasonal <region>` | Seasonal (ENSO) / weeks-2–6 outlook |
 | `run.ps1 parcel "<address>"` | **Address-level** report |
+| `run.ps1 explainer <state>` | **Heat at every scale** (CONUS→region→state→parcel, nowcast + forecast) |
 | `run.ps1 performance` / `fireperf` / `leadtime` | Independent-event skill scores |
 | `run.ps1 skill` / `validate` / `hindcast` | Calibration suite / disaster replays |
 | `run.ps1 serve` | Interactive Leaflet dashboard |
