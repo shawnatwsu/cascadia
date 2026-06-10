@@ -6,6 +6,7 @@ hitting NWS / ERA5 / NWIS.
 """
 import numpy as np
 import pandas as pd
+import pytest
 
 from cascadia import validation_scaled as vs
 from cascadia import validation_fire as vf
@@ -57,6 +58,7 @@ def test_control_date_modes():
 
 def test_fire_danger_formula_monotonic(monkeypatch):
     """Drier/hotter GRIDMET inputs must yield higher danger, capped at 0.6."""
+    pytest.importorskip("xarray")  # cascadia.sources.gridmet imports xarray
     from cascadia.config import Config
     cfg = Config.load()
 
@@ -77,6 +79,7 @@ def test_fire_danger_formula_monotonic(monkeypatch):
 def test_render_and_metrics_on_synthetic(tmp_path):
     """A separable synthetic set should yield AUC well above chance and a
     well-formed result dict + figure."""
+    pytest.importorskip("matplotlib")  # _render draws a figure
     from sklearn.metrics import roc_auc_score, roc_curve
     rng = np.random.default_rng(0)
     pos = np.clip(rng.normal(0.6, 0.15, 80), 0, 1)
