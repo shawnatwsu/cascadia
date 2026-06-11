@@ -45,12 +45,21 @@ PARCELS = {
 }
 
 
-def _latest_cube(cache_dir: Path) -> str:
-    files = sorted(glob.glob(str(Path(cache_dir) / "gridmet_-125p0_24p5_-66p9_49p5_*.nc")),
-                   key=os.path.getmtime)
+def _latest_cube(cache_dir: Path, verbose: bool = True) -> str:
+    """Newest cached CONUS GRIDMET cube; fetches one if none exists (so a fresh
+    clone works without first running `conditions conus`)."""
+    pat = str(Path(cache_dir) / "gridmet_-125p0_24p5_-66p9_49p5_*.nc")
+    files = sorted(glob.glob(pat), key=os.path.getmtime)
     if not files:
-        raise SystemExit("No cached CONUS GRIDMET cube found.\n"
-                         "Run this first:  python run.py conditions conus")
+        if verbose:
+            print("No cached CONUS GRIDMET cube — fetching one (one-time, ~1-2 min)…")
+        from .sources.gridmet import region_daily, gridmet_window
+        gstart, gend = gridmet_window(Config.load())
+        region_daily((-125.0, 24.5, -66.9, 49.5), gstart, gend, cache_dir,
+                     stride=6, verbose=verbose)
+        files = sorted(glob.glob(pat), key=os.path.getmtime)
+    if not files:
+        raise SystemExit("Could not obtain a CONUS GRIDMET cube (check your network).")
     return files[-1]
 
 
