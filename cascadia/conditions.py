@@ -31,6 +31,30 @@ REGIONS = {
     "conus": (-125.0, 24.5, -66.9, 49.5),
     "california": (-124.5, 32.5, -114.1, 42.1),
 }
+
+# Single-hazard selection: friendly aliases -> the risk-frame column. Used by
+# `run.ps1 hazard <name> <region>` to render just one hazard. The canonical
+# hazard name (for the output folder) is the column with the "p_" stripped.
+HAZARD_COLS = {
+    "flood": "p_flood",
+    "landslide": "p_landslide", "slide": "p_landslide", "mudslide": "p_landslide",
+    "wildfire": "p_wildfire", "fire": "p_wildfire",
+    "earthquake": "p_earthquake", "quake": "p_earthquake", "eq": "p_earthquake",
+    "seismic": "p_earthquake",
+    "heat": "p_heat", "heatwave": "p_heat",
+    "smoke": "p_smoke", "air": "p_smoke", "airquality": "p_smoke", "aqi": "p_smoke",
+}
+
+
+def resolve_hazard(key: str):
+    """('wildfire' | 'fire' | …) -> ('wildfire', 'p_wildfire') or None."""
+    col = HAZARD_COLS.get(key.lower())
+    return (col[2:], col) if col else None
+
+
+def hazard_keys() -> list:
+    """Canonical hazard names, for help text."""
+    return sorted({c[2:] for c in HAZARD_COLS.values()})
 DEFAULT_RES = {"pnw": 0.1, "california": 0.1, "conus": 0.25}
 # GRIDMET stride (native 4km): coarsen for big regions to bound the download.
 GRIDMET_STRIDE = {"pnw": 1, "california": 1, "conus": 6}
@@ -72,8 +96,12 @@ def region_keys() -> list:
 
 def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
                    out_path: str | Path = "cascadia_conditions_map.png",
-                   verbose: bool = True, render: bool = True):
-    """Build and render the GRIDMET conditions nowcast for a named region."""
+                   verbose: bool = True, render: bool = True,
+                   hazard: str | None = None):
+    """Build and render the GRIDMET conditions nowcast for a named region.
+
+    `hazard` (e.g. 'wildfire', 'heat', 'earthquake') renders a single-hazard
+    map instead of the full six-panel layout."""
     from .sources.gridmet import (derive_cell_features, gridmet_window,
                                    region_daily)
     from .sources.seismicity import Seismicity
@@ -188,12 +216,36 @@ def conditions_map(region_key: str = "pnw", resolution_deg: float | None = None,
         risk.attrs["region_name"] = region.name
         risk.attrs["res"] = res
         return risk, None
+
+    prov = (f"GRIDMET {gstart}–{gend} (4km) · USGS seismicity+streamflow "
+            "· USGS landslide inventory · NASA FIRMS · Albers equal-area")
+
+    if hazard is not None:
+        # --- single-hazard map -------------------------------------------
+        col = HAZARD_COLS.get(hazard.lower())
+        if col is None or col not in risk.columns:
+            raise ValueError(f"unknown hazard '{hazard}'. options: {hazard_keys()}")
+        from .cartomap import HAZARD_TITLES
+        nice = HAZARD_TITLES.get(col, col)
+        out = static_risk_map(
+            risk, region.name, out_path, panels=False, cols=[col], as_of="nowcast",
+            boundaries=boundary_states,
+            suptitle=f"Cascadia — {nice} nowcast\n{region.name}  ·  current conditions",
+            value_label="hazard probability (current conditions)",
+            provenance=prov,
+            description=(
+                f"IN PLAIN TERMS: how elevated the {nice.lower()} hazard is RIGHT "
+                "NOW in every ~4 km cell, from recent weather and land conditions. "
+                "Darker = more dangerous; near-zero cells are left white. This is a "
+                "NOWCAST of current conditions, not a forward forecast."))
+        log(f"Map written: {out}")
+        return risk, out
+
     out = static_risk_map(
         risk, region.name, out_path, panels=True, as_of="nowcast",
         boundaries=boundary_states,
         value_label="hazard probability (current conditions)",
-        provenance=(f"GRIDMET {gstart}–{gend} (4km) · USGS seismicity+streamflow "
-                    "· USGS landslide inventory · NASA FIRMS · Albers equal-area"),
+        provenance=prov,
         description=(
             "IN PLAIN TERMS: a snapshot of how dangerous each hazard is RIGHT NOW "
             "in every ~4 km cell, from recent weather and land conditions. Darker "

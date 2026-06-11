@@ -76,6 +76,7 @@ Maps land in `outputs/` (the full path prints each run). Smoke + live fire need 
 |---|---|
 | `run.ps1` | Live **7-day forecast** map |
 | `run.ps1 conditions <region>` | **4 km nowcast**, all six hazards |
+| `run.ps1 hazard <hazard> <region>` | **One hazard on its own map** (`wildfire`, `heat`, `flood`, `earthquake`, `landslide`, `smoke`) → saved in `outputs/<hazard>/` |
 | `run.ps1 impact <region>` | **Expected people affected** |
 | `run.ps1 seasonal` / `subseasonal <region>` | Seasonal (ENSO) / weeks-2–6 outlook |
 | `run.ps1 parcel "<address>"` | **Address-level** report |

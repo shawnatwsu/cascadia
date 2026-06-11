@@ -22,10 +22,11 @@ ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = ROOT / "outputs"
 
 
-def _outfile(name: str) -> Path:
-    """Absolute path inside the outputs/ folder (created on demand)."""
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    return OUTPUT_DIR / name
+def _outfile(name: str, sub: str | None = None) -> Path:
+    """Absolute path inside outputs/ (or outputs/<sub>/), created on demand."""
+    d = OUTPUT_DIR / sub if sub else OUTPUT_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d / name
 
 
 def _open(path_or_url: str) -> None:
@@ -133,6 +134,35 @@ def cmd_conditions(args: list[str]) -> None:
         return
     print(f"Building GRIDMET 4km hazard-conditions nowcast for {region.upper()}…\n")
     _, out = conditions_map(region, out_path=_outfile(f"conditions_{region}.png"))
+    _announce(out)
+
+
+def cmd_hazard(args: list[str]) -> None:
+    """One hazard, on its own map. `run.ps1 hazard wildfire conus`
+    (or heat / flood / earthquake / landslide / smoke). Each hazard saves into
+    its own outputs/<hazard>/ folder. Region defaults to conus."""
+    from cascadia.conditions import (conditions_map, region_keys,
+                                     resolve_hazard, hazard_keys)
+    if not args:
+        print("Usage: run.ps1 hazard <hazard> [region]\n"
+              f"  hazards: {', '.join(hazard_keys())}\n"
+              "  e.g. run.ps1 hazard wildfire conus | hazard heat texas")
+        return
+    resolved = resolve_hazard(args[0])
+    if not resolved:
+        print(f"Unknown hazard '{args[0]}'. Choices: {', '.join(hazard_keys())} "
+              "(aliases: fire, quake, slide, air…).")
+        return
+    name, _col = resolved
+    region = ("_".join(a.lower() for a in args[1:]) if len(args) > 1 else "conus")
+    if region not in region_keys():
+        print(f"Unknown region '{region}'. Choices: conus, pnw, the NCA5 regions, "
+              "or any US state (e.g. texas, new_york, tx).")
+        return
+    print(f"Building the {name.upper()} nowcast for {region.upper()} "
+          "(GRIDMET 4km, single hazard)…\n")
+    out = _outfile(f"{name}_{region}.png", sub=name)
+    _, out = conditions_map(region, out_path=out, hazard=name)
     _announce(out)
 
 
@@ -267,6 +297,7 @@ COMMANDS = {
     "all": cmd_all,
     "parcel": cmd_parcel,
     "conditions": cmd_conditions,
+    "hazard": cmd_hazard,
     "subseasonal": cmd_subseasonal,
     "seasonal": cmd_seasonal,
     "impact": cmd_impact,
